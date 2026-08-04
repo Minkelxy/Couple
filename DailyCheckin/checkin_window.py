@@ -357,7 +357,7 @@ class CheckinWindow(QMainWindow):
                     att_ext = Path(full).suffix
                 except OSError:
                     attachment = None
-        self._hub.send_event("checkin", payload, attachment=attachment, att_ext=att_ext)
+        self._hub.send_event("checkin", payload, attachment=attachment, att_ext=att_ext, silent=True)
 
     def on_partner_event(self, meta: dict, content: str, attachment: bytes,
                          att_ext: str) -> None:

@@ -116,6 +116,7 @@ class SyncHub(QObject):
         content: str,
         attachment: bytes | None,
         att_ext: str,
+        silent: bool = False,
     ) -> None:
         mode = self._cfg.get("sync_mode", "lan")
         if mode in ("lan", "both"):
@@ -124,14 +125,14 @@ class SyncHub(QObject):
                 port = int(self._cfg.get("peer_port", DEFAULT_PORT))
                 t = threading.Thread(
                     target=self._send_blocking,
-                    args=(host, port, meta, content, attachment or b"", att_ext),
+                    args=(host, port, meta, content, attachment or b"", att_ext, silent),
                     daemon=True,
                 )
                 t.start()
         if mode in ("cloud", "both") and self._cloud_client is not None:
             t = threading.Thread(
                 target=self._cloud_send_blocking,
-                args=(meta, content, attachment or b"", att_ext),
+                args=(meta, content, attachment or b"", att_ext, silent),
                 daemon=True,
             )
             t.start()
@@ -142,11 +143,15 @@ class SyncHub(QObject):
         payload: dict,
         attachment: bytes | None = None,
         att_ext: str = "",
+        silent: bool = False,
     ) -> None:
-        """通用事件发送：自动构造 meta={type, **payload, sent_at} 复用 send_async。"""
+        """通用事件发送：自动构造 meta={type, **payload, sent_at} 复用 send_async。
+
+        silent=True 时不 emit send_result（心跳等后台事件失败不应弹通知）。
+        """
         meta = {"type": event_type, "sent_at": datetime.now().isoformat(timespec="seconds")}
         meta.update(payload)
-        self.send_async(meta, "", attachment, att_ext)
+        self.send_async(meta, "", attachment, att_ext, silent=silent)
 
     def _send_blocking(
         self,
@@ -156,6 +161,7 @@ class SyncHub(QObject):
         content: str,
         attachment: bytes,
         att_ext: str,
+        silent: bool = False,
     ) -> None:
         try:
             with socket.create_connection((host, port), timeout=4) as s:
@@ -171,9 +177,11 @@ class SyncHub(QObject):
                 s.sendall(content_b)
                 if attachment:
                     s.sendall(attachment)
-            self.send_result.emit(True, f"已同步到 {host}")
+            if not silent:
+                self.send_result.emit(True, f"已同步到 {host}")
         except OSError as e:
-            self.send_result.emit(False, f"同步失败：{e}")
+            if not silent:
+                self.send_result.emit(False, f"同步失败：{e}")
 
     def _cloud_send_blocking(
         self,
@@ -181,14 +189,16 @@ class SyncHub(QObject):
         content: str,
         attachment: bytes,
         att_ext: str,
+        silent: bool = False,
     ) -> None:
         if self._cloud_client is None:
             return
         ok = self._cloud_client.send_letter(meta, content, attachment, att_ext)
-        if ok:
-            self.send_result.emit(True, "已通过云中转寄出")
-        else:
-            self.send_result.emit(False, "云同步失败")
+        if not silent:
+            if ok:
+                self.send_result.emit(True, "已通过云中转寄出")
+            else:
+                self.send_result.emit(False, "云同步失败")
 
     # ---------- 云轮询 ----------
 
@@ -222,8 +232,8 @@ class SyncHub(QObject):
         self._heartbeat_timer.start()
 
     def _heartbeat_loop(self) -> None:
-        # 发送心跳事件（不带附件、无正文）
-        self.send_event("ping", {"kind": "heartbeat"})
+        # 发送心跳事件（不带附件、无正文）；静默发送，失败不弹通知
+        self.send_event("ping", {"kind": "heartbeat"}, silent=True)
         self._heartbeat_schedule()
 
     # ---------- 收信 ----------

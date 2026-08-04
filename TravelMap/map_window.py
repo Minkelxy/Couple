@@ -446,6 +446,7 @@ class TravelMapWindow(QMainWindow):
             },
             attachment=attachment,
             att_ext=att_ext,
+            silent=True,
         )
 
     def _on_add_city(self) -> None:

@@ -481,7 +481,7 @@ class BoardWindow(QMainWindow):
             "title": movie.get("title", ""),
             "status": movie.get("status"),
             "rating": rating if isinstance(rating, int) else None,
-        })
+        }, silent=True)
 
     # ===== 年度报告 =====
     def _on_report(self) -> None:
