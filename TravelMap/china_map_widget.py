@@ -65,6 +65,12 @@ class ChinaMapWidget(QWidget):
         self._cities: list[dict] = []
         self._route: list[dict] = []
 
+        # 省界屏幕坐标缓存：仅在视图变换（尺寸/缩放/偏移）变化时重算
+        # paintEvent 每帧都调 _draw_provinces，中国省界数千顶点，缓存避免重复投影
+        self._cached_fill: list[QPolygonF] = []
+        self._cached_outline: list[list[QPointF]] = []
+        self._cache_key: tuple = ()  # (w, h, scale, offset.x, offset.y)
+
     # ---------- 公共接口 ----------
 
     def set_cities(self, cities: list[dict]) -> None:
@@ -140,30 +146,49 @@ class ChinaMapWidget(QWidget):
         self._draw_legend(p)
 
     def _draw_provinces(self, p: QPainter) -> None:
-        """绘制所有省份的真实边界多边形。"""
+        """绘制所有省份的真实边界多边形。
+
+        性能：省界顶点数千个，每次 paintEvent 都全量投影会很卡。
+        这里按视图变换 key 缓存投影结果，仅在尺寸/缩放/偏移变化时重算。
+        """
         if not self._all_polys:
             return
+
+        # 缓存 key：视图变换决定投影结果
+        key = (
+            self.width(), self.height(),
+            round(self._scale, 4),
+            round(self._offset.x(), 1), round(self._offset.y(), 1),
+        )
+        if key != self._cache_key:
+            self._cache_key = key
+            self._cached_fill = [
+                QPolygonF([self._lnglat_to_screen(lng, lat)
+                          for lng, lat in poly_pts])
+                for poly_pts in self._all_polys
+                if len(poly_pts) >= 3
+            ]
+            self._cached_outline = []
+            for prov in self._provinces:
+                for poly_pts in prov["polygons"]:
+                    if len(poly_pts) < 2:
+                        continue
+                    self._cached_outline.append(
+                        [self._lnglat_to_screen(lng, lat)
+                         for lng, lat in poly_pts]
+                    )
 
         # 先画所有省份填充 + 外轮廓
         p.setBrush(QBrush(_LAND_COLOR))
         p.setPen(QPen(_LAND_OUTLINE, 1.0))
-        for poly_pts in self._all_polys:
-            if len(poly_pts) < 3:
-                continue
-            qpoly = QPolygonF([self._lnglat_to_screen(lng, lat)
-                               for lng, lat in poly_pts])
+        for qpoly in self._cached_fill:
             p.drawPolygon(qpoly)
 
         # 再画省界（用稍深的颜色描边每个省份的边界）
         p.setPen(QPen(_PROVINCE_OUTLINE, 0.5))
-        for prov in self._provinces:
-            for poly_pts in prov["polygons"]:
-                if len(poly_pts) < 2:
-                    continue
-                pts = [self._lnglat_to_screen(lng, lat)
-                       for lng, lat in poly_pts]
-                for i in range(len(pts) - 1):
-                    p.drawLine(pts[i], pts[i + 1])
+        for pts in self._cached_outline:
+            for i in range(len(pts) - 1):
+                p.drawLine(pts[i], pts[i + 1])
 
     def _draw_route(self, p: QPainter) -> None:
         if len(self._route) < 2:

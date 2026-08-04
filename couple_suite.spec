@@ -58,7 +58,6 @@ a = Analysis(
         'TravelMap',
         'TravelMap.store',
         'TravelMap.city_picker',
-        'TravelMap.map_renderer',
         'TravelMap.map_window',
         'TravelMap.china_outline',
         'TravelMap.china_map_widget',

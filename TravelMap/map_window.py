@@ -19,9 +19,9 @@ from PySide6.QtWidgets import (
 )
 
 import app_paths
+from common_utils import check_attachment_size, log_warning, safe_filename, safe_image_ext
 
 from . import city_picker
-from . import map_renderer
 from . import store
 from .china_map_widget import ChinaMapWidget
 
@@ -52,7 +52,7 @@ def handle_partner_event(meta: dict, content: str, attachment: bytes,
     """收到对方 map 事件：追加为 partner 城市记录。
 
     若附带照片字节，存入 TRAVEL_DIR/partner_photos/，再调 store.add_partner_city。
-    文件名 = f"{int(time.time())}_{city}.{att_ext 去点}"。
+    安全：city 来自网络输入，用 safe_filename 过滤防路径遍历；attachment 大小校验。
     """
     city = meta.get("city", "")
     if not city:
@@ -62,16 +62,23 @@ def handle_partner_event(meta: dict, content: str, attachment: bytes,
     note = meta.get("note", "")
     photo_filename = ""
     if attachment:
-        ext = att_ext.lstrip(".")
-        filename = f"{int(time.time())}_{city}.{ext}"
-        dest_dir = app_paths.TRAVEL_DIR / "partner_photos"
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        dest = dest_dir / filename
-        try:
-            dest.write_bytes(attachment)
-        except OSError:
-            return
-        photo_filename = f"partner_photos/{filename}"
+        # 附件大小校验
+        err = check_attachment_size(attachment)
+        if err is not None:
+            log_warning("拒绝接收对方旅行照片: %s", err)
+        else:
+            ext = safe_image_ext(att_ext)
+            # city 来自网络输入，过滤为安全文件名片段
+            safe_city = safe_filename(city, fallback="city")
+            filename = f"{int(time.time())}_{safe_city}{ext}"
+            dest_dir = app_paths.TRAVEL_DIR / "partner_photos"
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            dest = dest_dir / filename
+            try:
+                dest.write_bytes(attachment)
+                photo_filename = f"partner_photos/{filename}"
+            except OSError:
+                log_warning("写入对方旅行照片失败: %s", filename)
     store.add_partner_city(city, lat, lng, note, photo_filename)
 
 

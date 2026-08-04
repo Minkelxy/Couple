@@ -12,9 +12,11 @@ import app_paths
 from PIL import Image
 from PySide6.QtCore import (
     QEasingCurve,
+    QObject,
     QPropertyAnimation,
     QSize,
     Qt,
+    QThread,
     QTimer,
     Signal,
 )
@@ -34,10 +36,25 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from common_utils import (
+    check_attachment_size,
+    log_exception,
+    log_warning,
+    safe_filename,
+)
+
 from . import config
 from . import image_processor as ip
 
 PINK = "#e65a7a"
+
+
+def _stop_anim(anim: QPropertyAnimation | None) -> None:
+    if anim is not None:
+        try:
+            anim.stop()
+        except RuntimeError:
+            pass
 
 
 def _fit_to_screen(img: Image.Image, max_w: int, max_h: int, zoom: float = 1.0) -> QPixmap:
@@ -137,9 +154,11 @@ class GalleryWindow(QMainWindow):
             return
         src = self._images[self._index]
         try:
-            img = Image.open(src)
-            img.load()
+            with Image.open(src) as src_img:
+                src_img.load()
+                img = src_img.copy()
         except Exception:
+            log_exception("画廊加载图片失败: %s", src)
             self._label.setText(f"无法加载：{src.name}")
             return
         pm = _fit_to_screen(img, self.width(), self.height(), self._zoom)
@@ -149,6 +168,7 @@ class GalleryWindow(QMainWindow):
         )
 
     def _fade_switch(self, pixmap: QPixmap) -> None:
+        _stop_anim(self._fade_anim)
         fade_out = QPropertyAnimation(self, b"windowOpacity", self)
         fade_out.setDuration(120)
         fade_out.setStartValue(self.windowOpacity() or 1.0)
@@ -159,6 +179,7 @@ class GalleryWindow(QMainWindow):
 
     def _apply_pixmap(self, pixmap: QPixmap) -> None:
         self._label.setPixmap(pixmap)
+        _stop_anim(self._fade_anim)
         fade_in = QPropertyAnimation(self, b"windowOpacity", self)
         fade_in.setDuration(180)
         fade_in.setStartValue(0.0)
@@ -227,6 +248,80 @@ class GalleryWindow(QMainWindow):
         super().resizeEvent(e)
 
 
+class _ThumbWorker(QThread):
+    """后台生成缩略图，逐张 emit 结果，避免主线程大相册卡顿。
+
+    主线程 _refresh_grid 先放占位项，worker 每生成一张就 emit (index, icon|None)。
+    worker 在新一次刷新开始时会被请求停止（isInterruptionRequested）。
+    """
+
+    thumb_ready = Signal(int, object)  # (index, QPixmap) 或 (index, None) 表示失败
+
+    def __init__(self, images: list[Path]) -> None:
+        super().__init__()
+        # 复制列表，避免外部修改影响遍历
+        self._images = list(images)
+
+    def run(self) -> None:
+        for i, src in enumerate(self._images):
+            if self.isInterruptionRequested():
+                return
+            pm: QPixmap | None = None
+            try:
+                with Image.open(src) as src_img:
+                    src_img.load()
+                    thumb = ip.fit_into(src_img.copy(), 200, 200)
+                pm = ip.pil_to_pixmap(thumb)
+            except Exception:
+                log_exception("生成缩略图失败: %s", src)
+                pm = None
+            if self.isInterruptionRequested():
+                return
+            self.thumb_ready.emit(i, pm)
+
+
+class _ShareWorker(QThread):
+    """后台逐张发送共享照片，避免大相册阻塞 UI。
+
+    读取照片字节 + send_event 都在子线程；send_event 内部已是异步发送。
+    """
+
+    progress = Signal(int, int)  # (sent, total)
+    finished_all = Signal(int, int)  # (sent, total)
+
+    def __init__(self, hub, images: list[Path], album_name: str) -> None:
+        super().__init__()
+        self._hub = hub
+        self._images = list(images)
+        self._album_name = album_name
+
+    def run(self) -> None:
+        total = len(self._images)
+        sent = 0
+        for i, img in enumerate(self._images):
+            if self.isInterruptionRequested():
+                break
+            try:
+                data = Path(img).read_bytes()
+                # 大小校验：超过上限的图片跳过并发警告
+                err = check_attachment_size(data)
+                if err is not None:
+                    log_warning("跳过共享 %s: %s", img.name, err)
+                else:
+                    self._hub.send_event(
+                        "photo",
+                        {"filename": img.name, "album_name": self._album_name},
+                        attachment=data,
+                        att_ext=Path(img).suffix,
+                    )
+                    sent += 1
+            except (OSError, AttributeError):
+                log_exception("读取共享照片失败: %s", img)
+                continue
+            self.progress.emit(sent, total)
+        self.finished_all.emit(sent, total)
+
+
 class GalleryGridWindow(QMainWindow):
     """缩略图网格浏览窗口。"""
 
@@ -237,6 +332,11 @@ class GalleryGridWindow(QMainWindow):
         self.setStyleSheet("QMainWindow{background:#fafafa;}")
         self._gallery_win: GalleryWindow | None = None
         self._hub = hub
+        # 后台 worker 引用（用于生命周期管理 + 防重复）
+        self._thumb_worker: _ThumbWorker | None = None
+        self._share_worker: _ShareWorker | None = None
+        # 当前网格的图片列表（与 thumb index 对齐）
+        self._grid_images: list[Path] = []
         self._build_ui()
         self._populate_albums()
         # 接收对方共享的照片：photo 事件落盘并刷新相册下拉
@@ -244,7 +344,7 @@ class GalleryGridWindow(QMainWindow):
             try:
                 self._hub.event_received.connect(self._on_hub_event)
             except (AttributeError, RuntimeError):
-                pass
+                log_exception("连接同步事件失败")
 
     def _build_ui(self) -> None:
         central = QWidget(self)
@@ -317,29 +417,57 @@ class GalleryGridWindow(QMainWindow):
     def _on_album_changed(self, _idx: int) -> None:
         self._refresh_grid()
 
+    def _stop_thumb_worker(self) -> None:
+        """请求停止并清理旧 thumb worker。"""
+        if self._thumb_worker is not None:
+            try:
+                self._thumb_worker.requestInterruption()
+                # 不强行 quit/wait：worker 会自行检测并退出，由 deleteLater 清理
+                self._thumb_worker.finished.connect(self._thumb_worker.deleteLater)
+            except RuntimeError:
+                pass
+            self._thumb_worker = None
+
     def _refresh_grid(self) -> None:
-        """刷新网格缩略图。"""
+        """刷新网格缩略图：先放占位项，再让后台 worker 填充图标。"""
+        self._stop_thumb_worker()
         self._grid.clear()
         path = self._album_combo.currentData() or ""
         images = ip.list_images(path)
+        self._grid_images = images
         if not images:
             item = QListWidgetItem("把照片放进目录：\n" + path)
             item.setFlags(Qt.NoItemFlags)
             item.setTextAlignment(Qt.AlignCenter)
             self._grid.addItem(item)
             return
+        # 先放占位项（无图标、显示文件名），保持位置与 images 索引对齐
         for src in images:
-            try:
-                img = Image.open(src)
-                img.load()
-                thumb = ip.fit_into(img, 200, 200)
-                pm = ip.pil_to_pixmap(thumb)
-                item = QListWidgetItem(QIcon(pm), src.name)
-                item.setData(Qt.UserRole, str(src))
-                self._grid.addItem(item)
-            except Exception:
-                item = QListWidgetItem("📷 " + src.name)
-                self._grid.addItem(item)
+            it = QListWidgetItem("📷 " + src.name)
+            it.setData(Qt.UserRole, str(src))
+            self._grid.addItem(it)
+        # 启动后台 worker 逐张生成缩略图
+        worker = _ThumbWorker(images)
+        worker.thumb_ready.connect(self._on_thumb_ready)
+        worker.finished.connect(worker.deleteLater)
+        self._thumb_worker = worker
+        worker.start()
+
+    def _on_thumb_ready(self, index: int, pm: object) -> None:
+        """worker 每生成一张缩略图回调：更新对应项图标。"""
+        # worker 可能在切换相册后还在 emit 旧结果，校验 index 范围
+        if index < 0 or index >= self._grid.count():
+            return
+        if self._thumb_worker is None:
+            return
+        item = self._grid.item(index)
+        if item is None:
+            return
+        if pm is not None and not pm.isNull():
+            item.setIcon(QIcon(pm))
+            # 去掉 "📷 " 前缀，只留文件名
+            name = self._grid_images[index].name if index < len(self._grid_images) else item.text()
+            item.setText(name)
 
     def _on_item_double_clicked(self, item: QListWidgetItem) -> None:
         path_str = item.data(Qt.UserRole)
@@ -369,9 +497,13 @@ class GalleryGridWindow(QMainWindow):
             self._share_current_album()
 
     def _share_current_album(self) -> None:
-        """把当前相册的所有照片逐张通过同步中枢发给对方。"""
+        """把当前相册的所有照片通过后台线程逐张发给对方，不阻塞 UI。"""
         if self._hub is None:
             QMessageBox.information(self, "共享", "同步服务未启动，无法共享。")
+            return
+        # 旧共享任务还在跑时拒绝重复触发
+        if self._share_worker is not None and self._share_worker.isRunning():
+            QMessageBox.information(self, "共享", "上一次共享还在进行中…")
             return
         path = self._album_combo.currentData() or ""
         images = ip.list_images(path)
@@ -381,21 +513,26 @@ class GalleryGridWindow(QMainWindow):
         current_album_name = self._album_combo.currentText()
         total = len(images)
         self.statusBar().showMessage(f"正在共享 {total} 张照片给对方…", 0)
-        sent = 0
-        for img in images:
-            try:
-                data = Path(img).read_bytes()
-                self._hub.send_event(
-                    "photo",
-                    {"filename": img.name, "album_name": current_album_name},
-                    attachment=data,
-                    att_ext=Path(img).suffix,
-                )
-                sent += 1
-            except (OSError, AttributeError):
-                continue
+        worker = _ShareWorker(self._hub, images, current_album_name)
+        worker.progress.connect(
+            lambda s, t: self.statusBar().showMessage(f"已共享 {s}/{t}…", 0)
+        )
+        worker.finished_all.connect(self._on_share_done)
+        worker.finished.connect(worker.deleteLater)
+        self._share_worker = worker
+        worker.start()
+
+    def _on_share_done(self, sent: int, total: int) -> None:
         self.statusBar().showMessage(f"已共享 {sent}/{total} 张照片给对方", 5000)
         QMessageBox.information(self, "共享", f"已共享 {sent}/{total} 张照片给对方。")
+        self._share_worker = None
+
+    def closeEvent(self, event) -> None:
+        # 窗口关闭时停止后台 worker，避免向已销毁的 widget emit
+        self._stop_thumb_worker()
+        if self._share_worker is not None and self._share_worker.isRunning():
+            self._share_worker.requestInterruption()
+        super().closeEvent(event)
 
     # ---------- 接收对方共享 ----------
     def _on_hub_event(
@@ -412,12 +549,27 @@ def handle_partner_event(
 ) -> None:
     """接收对方共享的照片：保存到 shared_photos 目录并注册为对方共享相册。
 
+    安全：
+    - filename 来自网络输入，先用 safe_filename 取纯文件名防止路径遍历
+    - attachment 大小校验，超限拒绝并记录日志
     被画廊窗口的事件分发调用（也可由 launcher 路由器直接调用）。
     """
     if not attachment:
         return
+    # 附件大小校验
+    err = check_attachment_size(attachment)
+    if err is not None:
+        log_warning("拒绝接收共享照片: %s", err)
+        return
     shared_dir = app_paths.DATA_DIR / "shared_photos"
     shared_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"{int(time.time())}_{meta.get('filename', 'photo')}"
-    (shared_dir / filename).write_bytes(attachment)
+    # 文件名安全化：去除任何路径分隔符
+    raw_name = meta.get("filename", "photo")
+    safe_name = safe_filename(raw_name, fallback="photo")
+    filename = f"{int(time.time())}_{safe_name}"
+    try:
+        (shared_dir / filename).write_bytes(attachment)
+    except OSError:
+        log_exception("写入共享照片失败: %s", filename)
+        return
     config.add_partner_album_path(str(shared_dir))

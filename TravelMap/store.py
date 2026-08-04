@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 
 import app_paths
+from common_utils import log_warning
 
 _DATA_PATH = app_paths.TRAVEL_DIR / "cities.json"
 
@@ -28,7 +29,8 @@ def _load() -> list[dict]:
         return []
     try:
         items = json.loads(_DATA_PATH.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as e:
+        log_warning("旅行地图数据加载失败，返回空列表: %s", e)
         return []
     if not isinstance(items, list):
         return []

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import shutil
 import time
+import weakref
 from datetime import date
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 import app_paths
+from common_utils import check_attachment_size, log_warning, safe_filename, safe_image_ext
 
 from . import store
 from .calendar_widget import CalendarWidget
@@ -36,17 +38,26 @@ def _resolve_checkin_image(image_path: str) -> str:
 _MOOD_CHOICES = [(5, "😊"), (4, "😍"), (3, "😢"), (2, "😡"), (1, "😴")]
 
 # 当前 CheckinWindow 实例，供模块级事件处理刷新 UI
-_active_window = None
+# 用弱引用：窗口关闭且无其他强引用时可被 GC，避免内存泄漏
+_active_window: weakref.ref | None = None
 
 
 def _save_partner_image(attachment: bytes, att_ext: str, date_str: str) -> str:
-    """保存对方发来的打卡图片到 partner_images/，返回文件名（失败返回空串）。"""
+    """保存对方发来的打卡图片到 partner_images/，返回文件名（失败返回空串）。
+
+    安全：attachment 大小校验，date_str 用 safe_filename 过滤防路径遍历。
+    """
     if not attachment:
         return ""
-    ext = att_ext or ".png"
-    if not ext.startswith("."):
-        ext = "." + ext
-    filename = f"{int(time.time())}_{date_str}{ext}"
+    # 附件大小校验
+    err = check_attachment_size(attachment)
+    if err is not None:
+        log_warning("拒绝接收对方打卡图片: %s", err)
+        return ""
+    ext = safe_image_ext(att_ext)
+    # date_str 来自网络输入，过滤为安全文件名片段
+    safe_date = safe_filename(date_str, fallback="partner")
+    filename = f"{int(time.time())}_{safe_date}{ext}"
     dest_dir = store.PARTNER_IMAGES_DIR
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / filename
@@ -54,6 +65,7 @@ def _save_partner_image(attachment: bytes, att_ext: str, date_str: str) -> str:
         dest.write_bytes(attachment)
         return filename
     except OSError:
+        log_warning("写入对方打卡图片失败: %s", filename)
         return ""
 
 
@@ -71,9 +83,10 @@ def handle_partner_event(meta: dict, content: str, attachment: bytes,
     note = meta.get("note", "") or ""
     image_path = _save_partner_image(attachment, att_ext, date_str)
     store.add_partner_record(date_str, mood, note, image_path)
-    if _active_window is not None:
-        _active_window.refresh_partner_sidebar()
-        _active_window._calendar.refresh()
+    win = _active_window() if _active_window is not None else None
+    if win is not None:
+        win.refresh_partner_sidebar()
+        win._calendar.refresh()
 
 
 class CheckinEditor(QDialog):
@@ -215,7 +228,7 @@ class CheckinWindow(QMainWindow):
         super().__init__()
         self._hub = hub
         global _active_window
-        _active_window = self
+        _active_window = weakref.ref(self)
         self.setWindowTitle("打卡日历 📅")
         self.resize(1180, 650)
         self._build_ui()

@@ -35,8 +35,20 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from common_utils import log_exception, log_warning
+
 from . import config
 from . import image_processor as ip
+
+
+def _stop_anim(anim: QPropertyAnimation | None) -> None:
+    """安全停止并释放一个 QPropertyAnimation。"""
+    if anim is not None:
+        try:
+            anim.stop()
+        except RuntimeError:
+            # C++ 对象已被销毁
+            pass
 
 
 def _hex_to_rgb(hex_str: str) -> tuple[int, int, int]:
@@ -165,6 +177,10 @@ class FrameWindow(QWidget):
         self._drag_offset: QPointF | None = None
         self._fade_anim: QPropertyAnimation | None = None
         self._prefetch_thread: threading.Thread | None = None
+        # 预取任务取消令牌：每次启动新预取时自增，旧线程读到变化即退出
+        self._prefetch_token = 0
+        # 预取线程读取的快照（避免子线程读主线程可变数据）
+        self._prefetch_lock = threading.Lock()
 
         self.setWindowFlags(
             Qt.FramelessWindowHint
@@ -272,12 +288,14 @@ class FrameWindow(QWidget):
         """切换到指定相册目录。"""
         self._cfg = config.update(image_dir=path)
         self.status_message.emit(f"已切换相册：{path}")
+        # 切相册时让旧的预取任务失效，避免写入旧图缓存
+        self._prefetch_token += 1
         # 清缓存避免旧尺寸图复用
         try:
             from .image_processor import get_cache
             get_cache().clear()
         except Exception:
-            pass
+            log_exception("清空 pixmap 缓存失败")
         self.reload()
 
     # ---------- 切换图片 ----------
@@ -328,6 +346,9 @@ class FrameWindow(QWidget):
         self._fade_switch(pixmap, kb)
 
     def _fade_switch(self, pixmap: QPixmap, kb: bool) -> None:
+        # 覆盖前先停止旧动画，避免并发修改 windowOpacity 造成闪烁
+        _stop_anim(self._fade_anim)
+        self._fade_anim = None
         fade_out = QPropertyAnimation(self, b"windowOpacity", self)
         fade_out.setDuration(160)
         fade_out.setStartValue(self.windowOpacity() or 1.0)
@@ -338,6 +359,7 @@ class FrameWindow(QWidget):
 
     def _apply_pixmap(self, pixmap: QPixmap, kb: bool) -> None:
         self._label.set_image(pixmap, kb_enabled=kb)
+        _stop_anim(self._fade_anim)
         fade_in = QPropertyAnimation(self, b"windowOpacity", self)
         fade_in.setDuration(220)
         fade_in.setStartValue(0.0)
@@ -352,12 +374,18 @@ class FrameWindow(QWidget):
 
         主线程 process_image 会自动消费该缓存，跳过 PIL 处理；QPixmap 转换仍
         在主线程完成，保证线程安全。列表为空或只有一张时不预生成。
+
+        线程安全：
+        - 启动前对所需参数取快照（不再读主线程可变数据）
+        - 用自增 token 取消旧任务：若启动后用户切了相册，token 会变，旧线程
+          检测到后放弃写入缓存
         """
         if len(self._images) <= 1:
             return
         next_index = (self._index + 1) % len(self._images)
+        # 快照所有参数，子线程不再读 self._cfg / self._images
         next_src = self._images[next_index]
-        cfg = self._cfg
+        cfg = dict(self._cfg)
         accent = self._today_accent_rgb()
         kb = bool(cfg.get("ken_burns", True))
         blur_bg = (not kb) and bool(cfg.get("blur_background", False))
@@ -366,6 +394,9 @@ class FrameWindow(QWidget):
         polaroid = cfg["polaroid_frame"]
         watermark = cfg["show_watermark"]
         corner_radius = cfg["corner_radius"]
+
+        self._prefetch_token += 1
+        my_token = self._prefetch_token
 
         def _worker() -> None:
             try:
@@ -380,18 +411,23 @@ class FrameWindow(QWidget):
                     accent_rgb=accent,
                     blur_background=blur_bg,
                 )
-                if result is not None:
-                    ip._pil_prefetch.put(
-                        next_src, target_w, target_h, result[0],
-                        polaroid=polaroid,
-                        watermark=watermark,
-                        corner_radius=corner_radius,
-                        ken_burns=kb,
-                        accent_rgb=accent,
-                        blur_background=blur_bg,
-                    )
+                if result is None:
+                    return
+                # token 变化说明已发起新的预取或切了相册，丢弃本次结果
+                with self._prefetch_lock:
+                    if my_token != self._prefetch_token:
+                        return
+                ip._pil_prefetch.put(
+                    next_src, target_w, target_h, result[0],
+                    polaroid=polaroid,
+                    watermark=watermark,
+                    corner_radius=corner_radius,
+                    ken_burns=kb,
+                    accent_rgb=accent,
+                    blur_background=blur_bg,
+                )
             except Exception:
-                pass
+                log_exception("预取图片失败: %s", next_src)
 
         t = threading.Thread(target=_worker, daemon=True)
         self._prefetch_thread = t
@@ -456,7 +492,7 @@ class FrameWindow(QWidget):
         try:
             ip.get_cache().clear()
         except Exception:
-            pass
+            log_exception("清空 pixmap 缓存失败")
         self._rerender_current()
         if new:
             msg = "模糊背景填充：开"

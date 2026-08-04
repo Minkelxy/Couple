@@ -22,6 +22,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from common_utils import check_attachment_size
+
 from . import config
 from . import letter_store
 
@@ -152,6 +154,11 @@ class ComposeWindow(QMainWindow):
             data = Path(path).read_bytes()
         except OSError as e:
             QMessageBox.warning(self, "读取失败", str(e))
+            return
+        # 附件大小校验：超限拒绝，避免同步/存储压力
+        err = check_attachment_size(data)
+        if err is not None:
+            QMessageBox.warning(self, "附件过大", err)
             return
         self._attachment_bytes = data
         self._attachment_ext = Path(path).suffix

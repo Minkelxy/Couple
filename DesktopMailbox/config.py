@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 import app_paths
+from common_utils import log_warning
 
 CONFIG_PATH = app_paths.CONFIG_DIR / "mailbox.json"
 DATA_DIR = app_paths.DATA_DIR
@@ -50,8 +51,8 @@ def load() -> dict:
     if CONFIG_PATH.exists():
         try:
             data.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
-        except (json.JSONDecodeError, OSError):
-            pass
+        except (json.JSONDecodeError, OSError) as e:
+            log_warning("邮箱配置加载失败，使用默认值: %s", e)
     anniv = data.get("anniversaries", [])
     data["anniversaries"] = anniv if isinstance(anniv, list) else []
     return data

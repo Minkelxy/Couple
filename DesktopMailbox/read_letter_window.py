@@ -17,6 +17,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from common_utils import check_attachment_size, log_exception, log_warning
+
 from . import letter_store
 
 
@@ -82,27 +84,34 @@ class ReadLetterWindow(QMainWindow):
         if meta["has_attachment"]:
             att = letter_store.read_attachment(letter_id)
             if att:
-                try:
-                    pil = Image.open(BytesIO(att))
-                    pil.load()
-                    # 等比缩放到不超过窗口宽度
-                    max_w = 580
-                    if pil.width > max_w:
-                        scale = max_w / pil.width
-                        pil = pil.resize(
-                            (max_w, int(pil.height * scale)), Image.LANCZOS
-                        )
-                    # PIL -> QPixmap
-                    buf = BytesIO()
-                    pil.save(buf, format="PNG")
-                    pm = QPixmap()
-                    pm.loadFromData(buf.getvalue())
-                    img_lbl = QLabel(self)
-                    img_lbl.setPixmap(pm)
-                    img_lbl.setAlignment(Qt.AlignCenter)
-                    layout.addWidget(img_lbl)
-                except Exception as e:
-                    layout.addWidget(QLabel(f"(附件无法显示: {e})", self))
+                # 附件大小校验：超限直接拒绝渲染，避免大图卡顿/OOM
+                size_err = check_attachment_size(att)
+                if size_err is not None:
+                    log_warning("附件过大，拒绝显示: %s", size_err)
+                    layout.addWidget(QLabel(f"(附件过大，无法显示)", self))
+                else:
+                    try:
+                        with Image.open(BytesIO(att)) as pil:
+                            pil.load()
+                            # 等比缩放到不超过窗口宽度
+                            max_w = 580
+                            if pil.width > max_w:
+                                scale = max_w / pil.width
+                                pil = pil.resize(
+                                    (max_w, int(pil.height * scale)), Image.LANCZOS
+                                )
+                            # PIL -> QPixmap
+                            buf = BytesIO()
+                            pil.save(buf, format="PNG")
+                            pm = QPixmap()
+                            pm.loadFromData(buf.getvalue())
+                        img_lbl = QLabel(self)
+                        img_lbl.setPixmap(pm)
+                        img_lbl.setAlignment(Qt.AlignCenter)
+                        layout.addWidget(img_lbl)
+                    except Exception:
+                        log_exception("附件渲染失败")
+                        layout.addWidget(QLabel("(附件无法显示)", self))
 
         layout.addStretch(1)
 

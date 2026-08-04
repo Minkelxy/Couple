@@ -10,13 +10,9 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 from PySide6.QtGui import QPixmap
 
-# Windows 常见中文字体路径，按优先级尝试
-_FONT_CANDIDATES = [
-    r"C:\Windows\Fonts\msyh.ttc",      # 微软雅黑
-    r"C:\Windows\Fonts\msyhbd.ttc",    # 微软雅黑粗
-    r"C:\Windows\Fonts\simhei.ttf",    # 黑体
-    r"C:\Windows\Fonts\simsun.ttc",    # 宋体
-]
+import font_utils
+from common_utils import log_exception
+
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".gif", ".tiff"}
 
 
@@ -31,14 +27,9 @@ def list_images(image_dir: str) -> list[Path]:
     )
 
 
-def _load_font(size: int) -> ImageFont.FreeTypeFont:
-    for path in _FONT_CANDIDATES:
-        if Path(path).exists():
-            try:
-                return ImageFont.truetype(path, size)
-            except OSError:
-                continue
-    return ImageFont.load_default()
+def _load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    """通过公共 font_utils 加载字体（带缓存）。"""
+    return font_utils.load_font(size)[0]
 
 
 def round_corners(img: Image.Image, radius: int) -> Image.Image:
@@ -164,6 +155,7 @@ def read_exif_info(src: Path) -> str:
         with Image.open(src) as im:
             exif = im.getexif()
     except Exception:
+        log_exception("读取 EXIF 失败: %s", src)
         return ""
     if not exif:
         return ""
@@ -272,9 +264,12 @@ def process_to_pil(
     适合竖图在横屏 / 横图在竖屏时无留白。
     """
     try:
-        img = Image.open(src)
-        img.load()
+        with Image.open(src) as src_img:
+            src_img.load()
+            # 立刻 copy 出来，with 块退出后文件句柄被释放，img 仍可正常使用
+            img = src_img.copy()
     except Exception:
+        log_exception("打开图片失败: %s", src)
         return None
 
     # 先加拍立得边框（在原始分辨率下，避免边框被压缩）

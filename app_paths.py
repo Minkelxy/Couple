@@ -3,6 +3,8 @@ import os
 import json
 from pathlib import Path
 
+from common_utils import log_warning
+
 APP_NAME = "CoupleSuite"
 APP_ROOT = Path(os.environ.get("APPDATA", str(Path.home()))) / APP_NAME
 CONFIG_DIR = APP_ROOT / "config"
@@ -35,7 +37,8 @@ def load_suite():
         return {}
     try:
         return json.loads(SUITE_CONFIG.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as e:
+        log_warning("套件配置加载失败，返回空: %s", e)
         return {}
 
 

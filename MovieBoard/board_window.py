@@ -27,6 +27,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from common_utils import log_exception
+
 from . import report_generator, scraper, store
 
 # (status, 名称, emoji)
@@ -85,6 +87,7 @@ class _SearchWorker(QThread):
             info["poster_path"] = poster_path
             self.found.emit(info)
         except Exception:
+            log_exception("影视搜索 worker 异常: %s", self._title)
             self.failed.emit()
 
 
@@ -146,6 +149,7 @@ class _MovieItemWidget(QWidget):
                 60, 80, Qt.KeepAspectRatio, Qt.SmoothTransformation
             )
         except Exception:
+            log_exception("加载海报失败: %s", path)
             return None
 
     @staticmethod
@@ -370,10 +374,17 @@ class BoardWindow(QMainWindow):
         if self._worker is not None and self._worker.isRunning():
             QMessageBox.information(self, "提示", "上一个搜索还在进行中…")
             return
-        self._worker = _SearchWorker(title)
-        self._worker.found.connect(self._on_search_found)
-        self._worker.failed.connect(lambda t=title: self._on_search_failed(t))
-        self._worker.start()
+        worker = _SearchWorker(title)
+        worker.found.connect(self._on_search_found)
+        worker.failed.connect(lambda t=title: self._on_search_failed(t))
+        # finished 时自动 deleteLater，并清理引用，避免 QThread 对象泄漏
+        worker.finished.connect(worker.deleteLater)
+        worker.finished.connect(self._clear_worker_ref)
+        self._worker = worker
+        worker.start()
+
+    def _clear_worker_ref(self) -> None:
+        self._worker = None
 
     def _on_search_found(self, info: dict) -> None:
         store.add(
