@@ -1,0 +1,74 @@
+"""配置管理：两个角色名 + 数据目录。"""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import app_paths
+
+CONFIG_PATH = app_paths.CONFIG_DIR / "mailbox.json"
+DATA_DIR = app_paths.DATA_DIR
+
+DEFAULTS = {
+    "my_name": "我",
+    "their_name": "你",
+    # 到期检查间隔（秒）
+    "check_interval_sec": 30,
+    # 局域网双机同步
+    "sync_enabled": False,
+    "peer_host": "",          # 对方 IP，如 192.168.1.20
+    "peer_port": 52014,       # 对方端口
+    "sync_port": 52014,       # 本机监听端口
+    # 云中转同步
+    "sync_mode": "lan",            # "lan" / "cloud" / "both"
+    "cloud_server": "",            # 如 https://couple-relay.example.com
+    "cloud_pair_code": "",         # 配对码，双方填相同码
+    "cloud_poll_interval_sec": 30, # 云轮询间隔
+    # 纪念日自动投递：每年这天自动生成一封信
+    # date: "MM-DD"；deliver_hour: 当天几点送达（已过则立即）
+    "anniversaries": [
+        {
+            "id": "meet",
+            "date": "08-14",
+            "title": "相识纪念日",
+            "content": "今天是我们相识的纪念日，谢谢你一直在我身边。",
+            "deliver_hour": 8,
+        },
+        {
+            "id": "valentine",
+            "date": "02-14",
+            "title": "情人节快乐",
+            "content": "情人节快乐，愿我们年年岁岁都如今日。",
+            "deliver_hour": 9,
+        },
+    ],
+}
+
+
+def load() -> dict:
+    data = dict(DEFAULTS)
+    if CONFIG_PATH.exists():
+        try:
+            data.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
+        except (json.JSONDecodeError, OSError):
+            pass
+    anniv = data.get("anniversaries", [])
+    data["anniversaries"] = anniv if isinstance(anniv, list) else []
+    return data
+
+
+def save(data: dict) -> None:
+    CONFIG_PATH.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def update(**kwargs) -> dict:
+    data = load()
+    data.update(kwargs)
+    save(data)
+    return data
+
+
+def ensure_dirs() -> None:
+    app_paths.ensure_dirs()

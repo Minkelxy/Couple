@@ -1,0 +1,39 @@
+# Checklist
+
+- [x] app_paths 扩展：新增 checkin/movies/travel/music 四个子目录，ensure_dirs() 创建
+- [x] 四个包骨架：DailyCheckin/、MovieBoard/、TravelMap/、MusicRadar/ 各含 __init__.py
+- [x] 打卡日历数据层：SQLite 存储打卡记录，含 add/get_by_date/get_range/get_streak
+- [x] 打卡日历 UI：月历组件显示 emoji，可切换月份
+- [x] 打卡编辑器：5 种心情 emoji + 一句话 + 可选附图
+- [x] 连续打卡天数显示
+- [x] 补卡功能：仅允许过去 7 天内
+- [x] 心情曲线：最近 30 天 matplotlib 折线图
+- [x] 影视数据层：SQLite 存储 title/status/poster/rating/review/douban_id
+- [x] 豆瓣抓取：Playwright 抓海报+简介，下载海报到 posters/
+- [x] 影视看板 UI：三栏布局（想看/在看/看完），含海报缩略图
+- [x] 添加影视对话框：输入片名→抓取→预览→确认
+- [x] 右键菜单：移动状态/评分短评/删除
+- [x] 双人评分对比显示
+- [x] 年度观影报告：Pillow 生成长图
+- [x] 旅行数据层：JSON 存储 city/date/story/image/type
+- [x] 城市选择器：预置中国主要城市列表（名称+经纬度）
+- [x] 地图渲染：Pillow 在中国底图绘制标记（粉色=去过，蓝色=愿望）
+- [x] 地图窗口：地图+统计+添加城市+路线动画
+- [x] 城市详情卡片：点击标记弹出日期/故事/照片
+- [x] 路线动画：按时间顺序点亮城市并连线
+- [x] 听歌数据层：JSON 缓存听歌记录
+- [x] 情绪分析：根据歌名/歌手推断六维情绪
+- [x] 网易云抓取：Playwright 抓用户最近听歌记录
+- [x] 雷达图：六维 matplotlib 雷达，双人叠加
+- [x] 共同 BGM 列表
+- [x] 今日对照卡片
+- [x] 托盘菜单：新增日历/影视/地图/音乐 4 个分区
+- [x] launcher 集成：4 个新模块窗口按需创建复用
+- [x] PyInstaller spec 更新：hiddenimports + 移除 matplotlib excludes
+- [x] exe 重打包可启动，4 个模块窗口可打开
+- [x] 编译全部新文件通过
+- [x] launcher.py 启动无运行时错误，托盘含 4 个新区
+- [x] 打卡日历冒烟：打卡→日历显示→曲线渲染
+- [x] 影视看板冒烟：添加→三栏→评分
+- [x] 旅行地图冒烟：添加城市→标记→详情
+- [x] 听歌雷达冒烟：雷达图渲染（模拟数据可用）

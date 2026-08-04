@@ -1,0 +1,129 @@
+# 桌面相册
+
+一款常驻系统托盘的桌面伴侣应用，集相册轮播、信箱、打卡日历、影视看板、旅行地图、五子棋于一体。支持双机局域网/云中转同步，让两台电脑像在身边一样。
+
+## 功能一览
+
+| 模块 | 说明 |
+|------|------|
+| 桌面相册 | 透明置顶窗口轮播照片，支持拍立得边框、日期水印、Ken Burns 动画、模糊背景填充、滚轮缩放、双击重置 |
+| 画廊浏览 | 网格浏览所有相册，右键共享当前相册给对方 |
+| 信箱 | 写信、延时投递、收件箱、附件加密存储（Fernet），支持纪念日自动提醒 |
+| 打卡日历 | 月历打卡、心情曲线、连续打卡统计、对方打卡侧栏 |
+| 影视看板 | 豆瓣抓取海报/简介、评分记录、对比报告（可选 Playwright 抓取） |
+| 旅行地图 | 中国省级边界离线地图（DataV GeoJSON）、城市标记、足迹图层、对方共享 |
+| 五子棋 | 双人对战、悔棋、同步走子 |
+| 想你了 | 一键向对方发送心跳通知 |
+
+## 快速开始
+
+### 环境要求
+
+- Windows 10/11
+- Python 3.10+（开发用；运行打包版无需 Python）
+
+### 开发运行
+
+```bash
+pip install PySide6 Pillow cryptography matplotlib
+python launcher.py
+```
+
+首次运行会弹出引导窗口，设置昵称、照片目录、可选同步。
+
+### 打包
+
+```bash
+pip install pyinstaller
+python -m PyInstaller couple_suite.spec --noconfirm
+```
+
+产物在 `dist/CoupleSuite/`，双击 `CoupleSuite.exe` 即可运行。
+
+## 同步方式
+
+支持三种模式，在「设置 → 同步」中切换：
+
+### 1. 局域网直连（lan）
+
+两台电脑连同一 WiFi，互相填对方 IP。默认端口 52014。
+
+- 优点：零配置、零延迟、零成本
+- 缺点：必须同一局域网
+
+### 2. 云中转（cloud）
+
+部署一个轻量 HTTP 中转服务器（`relay_server.py`），双机通过配对码收发。
+
+```bash
+pip install flask gunicorn
+python relay_server.py          # 开发
+gunicorn -w 4 -b 0.0.0.0:5000 relay_server:app   # 生产
+```
+
+接口约定：
+
+- `POST /api/send` — 发送信件
+- `GET /api/poll?pair_code={code}&since={ts}` — 增量拉取
+- `GET /health` — 健康检查
+
+详见 [relay_server.py](relay_server.py) 文档字符串。生产环境建议套 nginx + HTTPS。
+
+### 3. 双模式（both）
+
+同时启用局域网和云中转，优先走局域网，失败回退云端。
+
+## 目录结构
+
+```
+Couple/
+├── launcher.py              # 统一入口
+├── tray.py                  # 统一托盘控制器
+├── app_paths.py             # %APPDATA%/CoupleSuite 路径管理
+├── onboarding.py            # 首次运行引导
+├── settings_window.py       # 设置窗口
+├── stats_window.py          # 统计看板
+├── backup.py                # 导出/恢复备份
+├── migration.py             # 旧数据迁移
+├── relay_server.py          # 云中转服务器（Flask）
+├── couple_suite.spec        # PyInstaller 配置
+├── DesktopPhotoFrame/       # 桌面相册模块
+├── DesktopMailbox/          # 信箱模块（含同步）
+├── DailyCheckin/            # 打卡日历模块
+├── MovieBoard/              # 影视看板模块
+├── TravelMap/               # 旅行地图模块
+├── Gomoku/                  # 五子棋模块
+└── assets/
+    ├── china_geo.json       # 中国省级边界 GeoJSON
+    ├── default_album/       # 内置示例相册
+    └── icon.ico             # 应用图标
+```
+
+## 数据存储
+
+所有用户数据存放在 `%APPDATA%/CoupleSuite/`：
+
+| 路径 | 内容 |
+|------|------|
+| `config/` | 各模块配置 JSON |
+| `data/letters/` | 加密信件 |
+| `images/` | 默认照片目录 |
+| `checkin/` | 打卡记录 |
+| `movies/` | 影视数据 + 海报 |
+| `travel/` | 地图城市标记 |
+| `cache/` | 缓存 |
+
+可通过托盘菜单「导出备份」打包全部数据，「恢复备份」还原。
+
+## 技术栈
+
+- **GUI**: PySide6 (Qt6)
+- **绘图**: QPainter 自绘地图、matplotlib 雷达图/曲线
+- **地图数据**: DataV.GeoAtlas 省级边界 GeoJSON（离线）
+- **加密**: cryptography.fernet（信件附件）
+- **同步**: TCP socket（局域网）+ HTTP（云中转）
+- **打包**: PyInstaller onedir
+
+## 许可
+
+私有项目，未公开发布。

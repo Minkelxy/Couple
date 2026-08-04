@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+
+# 虚拟环境
+venv/
+.venv/
+env/
+ENV/
+
+# PyInstaller 打包产物
+build/
+dist/
+*.spec.bak
+
+# 日志和临时文件
+build_log.txt
+*.log
+*.tmp
+
+# 用户数据（运行时生成，不入库）
+DesktopMailbox/data/
+DesktopMailbox/config.json
+DesktopPhotoFrame/config.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# 操作系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 中转服务器数据库
+letters.db

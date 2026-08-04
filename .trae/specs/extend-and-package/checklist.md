@@ -1,0 +1,24 @@
+# Checklist
+
+- [x] 数据目录迁移：`app_paths.py` 定义 `%APPDATA%\CoupleSuite\` 子目录结构（config/data/images/cache）
+- [x] 首次启动迁移：检测旧 `DesktopPhotoFrame/config.json` 与 `DesktopMailbox/data`，自动迁移到 AppData 并写 `.migrated` 标记，不重复迁移
+- [x] 配置路径改造：相框/信箱 config.py 的 CONFIG_PATH/DATA_DIR 指向 AppData，launcher 接入 app_paths 初始化
+- [x] 打包后写入：exe 运行时配置与数据读写不报权限错误
+- [x] 图片缓存：`PixmapCache` LRU 上限 50，按完整选项 key 命中即返回 QPixmap
+- [x] 后台预生成：当前图显示后后台线程预生成下一张入缓存
+- [x] 缓存上限淘汰：超过 50 条按 LRU 淘汰，内存不无限增长
+- [x] 设置窗口：相框/信箱/同步/纪念日/通用 五个标签页，覆盖所有可配置项
+- [x] 设置即时生效：改轮播间隔/同步开关/自启动后无需重启即生效
+- [x] 开机自启动：enable/disable/is_enabled 操作注册表 HKCU Run 键，设置窗口可开关
+- [x] 数据备份：export_backup 生成含 images/data/configs 的 zip（文件名带日期）
+- [x] 数据恢复：restore_backup 解压覆盖前提示确认，恢复后刷新相框与信箱
+- [x] 多相册：config 含 albums 列表，托盘"切换相册"子菜单可切换，设置窗口可增删相册
+- [x] 首次引导：无 suite.json 时弹出引导，设置昵称/图片目录/对方 IP，可跳过
+- [x] 统计看板：展示在一起天数、信件总数、未读数、照片数、下个纪念日倒计时
+- [x] 托盘菜单扩展：新增 设置/切换相册/统计看板/导出备份/恢复备份 菜单项
+- [x] PyInstaller spec：onedir 模式，entry=launcher.py，含 PySide6/Pillow/cryptography hiddenimports，应用图标
+- [x] exe 产物：`dist/CoupleSuite/CoupleSuite.exe` 可双击启动
+- [x] 无 Python 环境：exe 在未装 Python 机器可正常运行
+- [x] 编译通过：全部 .py 文件 `py_compile` 无错
+- [x] 启动无错：launcher.py 启动后相框+信箱+托盘正常无运行时异常
+- [x] 备份回环：导出 zip 后恢复，数据完整一致

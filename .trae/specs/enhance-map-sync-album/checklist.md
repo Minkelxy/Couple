@@ -1,0 +1,35 @@
+# Checklist
+
+- [x] 地图城市照片：选择后复制到 travel/photos/，存储纯文件名
+- [x] 地图城市照片：加载时从 AppData 拼接路径显示
+- [x] 地图城市照片：原图删除后详情卡片仍能显示照片
+- [x] 打卡附图：选择后复制到 checkin/images/，存储纯文件名
+- [x] 打卡附图：加载时从 AppData 拼接路径显示
+- [x] 打卡附图：原图删除后打卡记录仍能显示附图
+- [x] 信箱配置新增 sync_mode/cloud_server/cloud_pair_code/cloud_poll_interval_sec
+- [x] 设置同步标签页：模式单选（局域网/云中转/两者）
+- [x] 设置同步标签页：云模式下显示服务器地址和配对码输入框
+- [x] CloudSyncClient.send_letter 实现（urllib POST JSON）
+- [x] CloudSyncClient.poll_letters 实现（urllib GET）
+- [x] 云服务器不可达时优雅返回 False 不崩溃
+- [x] SyncHub 根据 sync_mode 初始化 cloud_client
+- [x] SyncHub.send_async 在 cloud 模式调用云发送
+- [x] SyncHub.start 在 cloud 模式启动轮询定时器
+- [x] SyncHub.stop 停止云轮询定时器
+- [x] 全屏画廊窗口：无边框全屏，照片居中 contain 显示
+- [x] 画廊键盘：→/↓/空格下一张，←/↑上一张，ESC 退出
+- [x] 画廊滚轮：1.0~3.0 缩放
+- [x] 画廊顶部悬浮工具栏（3 秒隐藏）
+- [x] 画廊底部显示索引/总数/文件名
+- [x] 缩略图网格窗口：4 列 200x200 缩略图
+- [x] 网格顶部相册下拉切换刷新
+- [x] 网格双击打开全屏画廊
+- [x] 托盘相框区新增"🖼 画廊浏览…"菜单项
+- [x] launcher 连接 open_gallery 信号，按需创建窗口
+- [x] 编译全部修改文件通过
+- [x] 地图冒烟：选照片→删原图→详情仍显示
+- [x] 打卡冒烟：选附图→删原图→记录仍显示
+- [x] 云同步配置可保存，模式切换 UI 正确
+- [x] 画廊全屏打开，键盘切换正常
+- [x] 缩略图网格显示当前相册照片，双击全屏
+- [x] 托盘"画廊浏览"可打开网格窗口
