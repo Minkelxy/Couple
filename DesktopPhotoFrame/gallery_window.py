@@ -313,6 +313,7 @@ class _ShareWorker(QThread):
                         {"filename": img.name, "album_name": self._album_name},
                         attachment=data,
                         att_ext=Path(img).suffix,
+                        silent=True,
                     )
                     sent += 1
             except (OSError, AttributeError):

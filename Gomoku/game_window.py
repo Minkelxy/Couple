@@ -211,7 +211,7 @@ class GameWindow(QMainWindow):
         if self._hub:
             self._hub.send_event("gomoku_move", {
                 "row": row, "col": col, "color": "black",
-            })
+            }, silent=True)
             self._status("等待对方落子…")
         else:
             # 本地双人模式：黑白轮流
@@ -276,7 +276,7 @@ class GameWindow(QMainWindow):
         btn = QMessageBox.question(self, "悔棋请求", "对方想悔棋，同意吗？")
         if btn == QMessageBox.Yes:
             if self._hub:
-                self._hub.send_event("gomoku_ctrl", {"kind": "undo_approve"})
+                self._hub.send_event("gomoku_ctrl", {"kind": "undo_approve"}, silent=True)
             self._board.undo_last(2)
             self._game_over = False
             # 同意后等待对方落子（对方先手）
@@ -284,7 +284,7 @@ class GameWindow(QMainWindow):
             self._status("你同意了悔棋，等待对方落子")
         else:
             if self._hub:
-                self._hub.send_event("gomoku_ctrl", {"kind": "undo_reject"})
+                self._hub.send_event("gomoku_ctrl", {"kind": "undo_reject"}, silent=True)
             self._status("你拒绝了悔棋")
 
     # ---------- 工具栏按钮 ----------
@@ -301,7 +301,7 @@ class GameWindow(QMainWindow):
         if self._i_requested_undo:
             return
         self._i_requested_undo = True
-        self._hub.send_event("gomoku_ctrl", {"kind": "undo_request"})
+        self._hub.send_event("gomoku_ctrl", {"kind": "undo_request"}, silent=True)
         self._board.set_locked(True)
         self._status("已发送悔棋请求…")
 
@@ -310,7 +310,7 @@ class GameWindow(QMainWindow):
         self._game_over = False
         self._i_requested_undo = False
         if self._hub:
-            self._hub.send_event("gomoku_ctrl", {"kind": "restart"})
+            self._hub.send_event("gomoku_ctrl", {"kind": "restart"}, silent=True)
             self._status("已重新开局，你先手（黑棋）")
         else:
             self._status("已重新开局")
@@ -343,4 +343,4 @@ class GameWindow(QMainWindow):
     def showEvent(self, event) -> None:
         super().showEvent(event)
         if self._hub and not self._suppress_open:
-            self._hub.send_event("gomoku_ctrl", {"kind": "open"})
+            self._hub.send_event("gomoku_ctrl", {"kind": "open"}, silent=True)
