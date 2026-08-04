@@ -8,10 +8,13 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+
+from common_utils import log_exception, log_warning
 
 from . import config
 from . import crypto
@@ -19,9 +22,18 @@ from . import crypto
 _META_PATH = config.DATA_DIR / "mailbox.json"
 _LETTERS_DIR = config.DATA_DIR / "letters"
 
+# letter_id 仅允许 12 位十六进制（write_letter 用 uuid4().hex[:12] 生成）
+# 防御路径遍历：read/delete 时校验，避免 ../ 逃逸 _LETTERS_DIR
+_SAFE_ID_RE = re.compile(r"^[0-9a-f]{1,16}$")
+
 
 def _now_iso() -> str:
     return datetime.now().isoformat(timespec="seconds")
+
+
+def _safe_id(letter_id: str) -> bool:
+    """校验 letter_id 是否为安全格式（纯十六进制），防路径遍历。"""
+    return bool(letter_id) and bool(_SAFE_ID_RE.match(letter_id))
 
 
 def _load_meta() -> list[dict]:
@@ -29,7 +41,8 @@ def _load_meta() -> list[dict]:
         return []
     try:
         return json.loads(_META_PATH.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as e:
+        log_warning("信件元数据加载失败，返回空列表: %s", e)
         return []
 
 
@@ -81,18 +94,32 @@ def write_letter(
 
 def read_content(letter_id: str) -> str:
     """解密并返回正文。"""
+    if not _safe_id(letter_id):
+        log_warning("非法 letter_id，拒绝读取正文: %r", letter_id)
+        return "(正文缺失)"
     path = _LETTERS_DIR / f"{letter_id}.enc"
     if not path.exists():
         return "(正文缺失)"
-    return crypto.decrypt(path.read_bytes()).decode("utf-8")
+    try:
+        return crypto.decrypt(path.read_bytes()).decode("utf-8")
+    except Exception:
+        log_exception("解密正文失败: %s", letter_id)
+        return "(正文损坏)"
 
 
 def read_attachment(letter_id: str) -> Optional[bytes]:
     """解密并返回附件字节，无则 None。"""
+    if not _safe_id(letter_id):
+        log_warning("非法 letter_id，拒绝读取附件: %r", letter_id)
+        return None
     path = _LETTERS_DIR / f"{letter_id}_att.enc"
     if not path.exists():
         return None
-    return crypto.decrypt(path.read_bytes())
+    try:
+        return crypto.decrypt(path.read_bytes())
+    except Exception:
+        log_exception("解密附件失败: %s", letter_id)
+        return None
 
 
 def list_letters(*, include_unsent: bool = False) -> list[dict]:
@@ -132,6 +159,9 @@ def mark_read(letter_id: str) -> None:
 
 
 def delete_letter(letter_id: str) -> None:
+    if not _safe_id(letter_id):
+        log_warning("非法 letter_id，拒绝删除: %r", letter_id)
+        return
     items = _load_meta()
     items = [it for it in items if it["id"] != letter_id]
     _save_meta(items)

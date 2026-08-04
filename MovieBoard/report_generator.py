@@ -12,6 +12,7 @@ from typing import Optional
 from PIL import Image, ImageDraw, ImageFont
 
 import app_paths
+import font_utils
 from . import store
 
 _WIDTH = 800
@@ -22,14 +23,6 @@ _PINK = (230, 90, 122)         # #e65a7a
 _DARK = (51, 51, 51)
 _GRAY = (136, 136, 136)
 
-# Windows 常见中文字体路径，按优先级尝试
-_FONT_CANDIDATES = [
-    r"C:\Windows\Fonts\msyh.ttc",
-    r"C:\Windows\Fonts\msyhbd.ttc",
-    r"C:\Windows\Fonts\simhei.ttf",
-    r"C:\Windows\Fonts\simsun.ttc",
-]
-
 # 常见影视类型关键词（用于从简介里解析类型分布）
 _GENRES = [
     "剧情", "喜剧", "爱情", "动作", "科幻", "悬疑", "惊悚", "恐怖",
@@ -38,15 +31,9 @@ _GENRES = [
 ]
 
 
-def _load_font(size: int) -> tuple[ImageFont.FreeTypeFont, bool]:
-    """加载指定字号字体，返回 (font, has_cjk)。"""
-    for path in _FONT_CANDIDATES:
-        if Path(path).exists():
-            try:
-                return ImageFont.truetype(path, size), True
-            except OSError:
-                continue
-    return ImageFont.load_default(), False
+def _load_font(size: int) -> tuple[ImageFont.FreeTypeFont | ImageFont.ImageFont, bool]:
+    """通过公共 font_utils 加载字体（带 LRU 缓存）。"""
+    return font_utils.load_font(size)
 
 
 def _gradient_bg(height: int) -> Image.Image:

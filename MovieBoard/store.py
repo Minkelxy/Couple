@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Optional
 
 import app_paths
+from common_utils import log_warning
 
 DB_PATH = app_paths.MOVIES_DIR / "movies.db"
 
@@ -148,7 +149,8 @@ def _load_partner_status() -> dict:
         return {}
     try:
         return json.loads(PARTNER_STATUS_FILE.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as e:
+        log_warning("影视对方状态加载失败，返回空: %s", e)
         return {}
 
 

@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 import app_paths
+from common_utils import log_warning
 
 GOMOKU_DIR = app_paths.DATA_DIR / "gomoku"
 
@@ -51,7 +52,8 @@ def list_games() -> list[dict]:
     for p in GOMOKU_DIR.glob("*.json"):
         try:
             rec = json.loads(p.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError) as e:
+            log_warning("跳过损坏的对局记录 %s: %s", p.name, e)
             continue
         result.append({
             "id": rec.get("id", p.stem),
@@ -70,5 +72,6 @@ def get_game(game_id: str) -> dict | None:
         return None
     try:
         return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as e:
+        log_warning("读取对局记录失败 %s: %s", game_id, e)
         return None

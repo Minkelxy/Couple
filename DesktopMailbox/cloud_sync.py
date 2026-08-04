@@ -13,6 +13,8 @@ import json
 import urllib.parse
 import urllib.request
 
+from common_utils import MAX_ATTACHMENT_BYTES, log_exception, log_warning
+
 
 class CloudSyncClient:
     def __init__(self, server: str, pair_code: str) -> None:
@@ -54,6 +56,7 @@ class CloudSyncClient:
                 resp.read()
             return True
         except Exception:
+            log_exception("云同步发送失败")
             return False
 
     def poll_letters(self, since_ts: str = "") -> tuple[list[dict], str]:
@@ -76,16 +79,25 @@ class CloudSyncClient:
             server_ts = data.get("server_ts", "")
             letters = []
             for item in data.get("letters", []):
+                att_b64 = item.get("attachment_base64", "") or ""
+                # 防御：base64 解码后字节数约为 len/4*3，超限直接丢弃该信件
+                if len(att_b64) > MAX_ATTACHMENT_BYTES * 2:
+                    log_warning(
+                        "云中转信件附件过大（base64 %d 字节），已丢弃",
+                        len(att_b64),
+                    )
+                    att = b""
+                else:
+                    att = base64.b64decode(att_b64)
                 letters.append({
                     "meta": item.get("meta", {}),
                     "content": base64.b64decode(
                         item.get("content_base64", "")
                     ).decode("utf-8"),
-                    "attachment": base64.b64decode(
-                        item.get("attachment_base64", "")
-                    ),
+                    "attachment": att,
                     "attachment_ext": item.get("attachment_ext", ""),
                 })
             return letters, server_ts
         except Exception:
+            log_exception("云同步轮询失败")
             return [], ""

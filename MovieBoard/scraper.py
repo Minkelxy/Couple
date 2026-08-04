@@ -9,6 +9,12 @@ import urllib.request
 from typing import Optional
 
 import app_paths
+from common_utils import (
+    MAX_ATTACHMENT_BYTES,
+    log_exception,
+    log_warning,
+    safe_filename,
+)
 
 _SEARCH_URL = "https://search.douban.com/movie/subject_search?search_text={query}"
 _PAGE_TIMEOUT_MS = 15000
@@ -50,6 +56,7 @@ def search_movie(title: str) -> Optional[dict]:
     try:
         from playwright.sync_api import sync_playwright
     except Exception:
+        log_warning("playwright 未安装，无法抓取豆瓣")
         return None
 
     try:
@@ -65,6 +72,7 @@ def search_movie(title: str) -> Optional[dict]:
                 try:
                     page.wait_for_selector('a[href*="/subject/"]', timeout=_PAGE_TIMEOUT_MS)
                 except Exception:
+                    # 选择器未出现属于正常情况（无结果或慢），不记为错误
                     pass
                 info = page.evaluate(_EXTRACT_JS)
                 if not info or not info.get("douban_id"):
@@ -78,23 +86,42 @@ def search_movie(title: str) -> Optional[dict]:
             finally:
                 browser.close()
     except Exception:
+        log_exception("豆瓣搜索失败: %s", title)
         return None
 
 
 def download_poster(url: str, douban_id: str) -> Optional[str]:
-    """下载海报到 posters/{douban_id}.jpg，返回本地路径，失败返回 None。"""
+    """下载海报到 posters/{douban_id}.jpg，返回本地路径，失败返回 None。
+
+    安全：流式读取并限制总大小（MAX_ATTACHMENT_BYTES），防止超大响应 OOM；
+    douban_id 用 safe_filename 过滤（虽源自正则仅为数字，仍做防御）。
+    """
     if not url or not douban_id:
         return None
     posters_dir = app_paths.MOVIES_DIR / "posters"
     posters_dir.mkdir(parents=True, exist_ok=True)
-    dest = posters_dir / f"{douban_id}.jpg"
+    safe_id = safe_filename(douban_id, fallback="poster")
+    dest = posters_dir / f"{safe_id}.jpg"
     try:
         req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
         with urllib.request.urlopen(req, timeout=_PAGE_TIMEOUT_MS / 1000) as resp:
-            data = resp.read()
+            # 分块读取，超限则中止，避免一次性 read() 撑爆内存
+            chunks: list[bytes] = []
+            total = 0
+            while True:
+                chunk = resp.read(65536)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_ATTACHMENT_BYTES:
+                    log_warning("海报过大（>%d 字节），已中止: %s", MAX_ATTACHMENT_BYTES, url)
+                    return None
+                chunks.append(chunk)
+            data = b"".join(chunks)
         if not data:
             return None
         dest.write_bytes(data)
         return str(dest)
     except Exception:
+        log_exception("下载海报失败: %s", url)
         return None

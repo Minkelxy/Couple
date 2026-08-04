@@ -8,6 +8,8 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from common_utils import log_warning
+
 from . import config
 from . import letter_store
 
@@ -19,7 +21,8 @@ def _load_sent() -> set[str]:
         return set()
     try:
         return set(json.loads(_SENT_LOG.read_text(encoding="utf-8")))
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as e:
+        log_warning("纪念日投递记录加载失败，返回空: %s", e)
         return set()
 
 

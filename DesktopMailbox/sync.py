@@ -21,11 +21,16 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
 
+from common_utils import MAX_ATTACHMENT_BYTES, log_exception, log_warning
+
 from . import letter_store
 from .cloud_sync import CloudSyncClient
 
 
 DEFAULT_PORT = 52014
+# 防御性上限：header JSON 不应过大；正文（文本）也需有界
+_MAX_HEADER_BYTES = 64 * 1024
+_MAX_CONTENT_BYTES = 1 * 1024 * 1024
 
 
 def _recv_exact(sock: socket.socket, n: int) -> bytes:
@@ -263,18 +268,34 @@ def _make_handler(hub: SyncHub):
                 if not hdr_len_b:
                     return
                 n = struct.unpack(">I", hdr_len_b)[0]
+                # 防御：限制 header 大小，避免恶意超大 header 撑爆内存
+                if n <= 0 or n > _MAX_HEADER_BYTES:
+                    log_warning("拒绝超大同步 header（%d 字节），关闭连接", n)
+                    return
                 hdr_b = _recv_exact(self.request, n)
                 if not hdr_b:
                     return
                 header = json.loads(hdr_b.decode("utf-8"))
                 meta = header["meta"]
-                content_b = _recv_exact(self.request, header["content_len"])
+                content_len = int(header.get("content_len", 0))
+                att_len = int(header.get("attachment_len", 0))
+                # 防御：限制正文与附件大小，防止恶意/异常大包 OOM
+                if content_len < 0 or content_len > _MAX_CONTENT_BYTES:
+                    log_warning("拒绝超大正文（%d 字节），关闭连接", content_len)
+                    return
+                if att_len < 0 or att_len > MAX_ATTACHMENT_BYTES:
+                    log_warning("拒绝超大附件（%d 字节），关闭连接", att_len)
+                    return
+                content_b = _recv_exact(self.request, content_len)
                 content = content_b.decode("utf-8")
                 att = b""
-                if header["attachment_len"]:
-                    att = _recv_exact(self.request, header["attachment_len"])
-                hub.on_received(meta, content, att, header.get("attachment_ext", ""))
+                if att_len:
+                    att = _recv_exact(self.request, att_len)
+                hub.on_received(
+                    meta, content, att, header.get("attachment_ext", "")
+                )
             except Exception:
-                pass  # 单次连接失败不影响服务端
+                # 单次连接失败不影响服务端，但记录便于排查
+                log_exception("同步连接处理异常")
 
     return _Handler

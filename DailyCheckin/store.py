@@ -6,6 +6,7 @@ import sqlite3
 from datetime import date, datetime, timedelta
 
 import app_paths
+from common_utils import log_warning
 
 DB_PATH = app_paths.CHECKIN_DIR / "checkin.db"
 IMAGES_DIR = app_paths.CHECKIN_DIR / "images"
@@ -108,7 +109,8 @@ def _load_partner() -> dict:
         return {}
     try:
         return json.loads(PARTNER_FILE.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as e:
+        log_warning("对方打卡记录加载失败，返回空: %s", e)
         return {}
 
 

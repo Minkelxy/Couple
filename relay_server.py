@@ -34,6 +34,8 @@ _DB_PATH = Path(__file__).parent / "letters.db"
 _LOCK = threading.Lock()
 _RETENTION_DAYS = 30
 _CLEANUP_INTERVAL_SEC = 6 * 3600
+# 单个附件上限（base64 编码后约 4/3 倍原始字节）
+_MAX_ATTACH_B64_LEN = 50 * 1024 * 1024 * 2  # 允许原始 50MB，base64 放宽 2 倍
 
 
 # ---------- 数据库 ----------
@@ -96,6 +98,13 @@ def api_send() -> tuple:
     content_b64 = data.get("content_base64") or ""
     attach_b64 = data.get("attachment_base64") or ""
     attach_ext = data.get("attachment_ext") or ""
+
+    # 防御：限制附件大小，防止恶意大包撑爆存储/内存
+    if len(attach_b64) > _MAX_ATTACH_B64_LEN:
+        return jsonify({"ok": False, "error": "attachment too large"}), 413
+    # 正文也限制（文本，1MB 足够）
+    if len(content_b64) > 2 * 1024 * 1024:
+        return jsonify({"ok": False, "error": "content too large"}), 413
 
     with _LOCK, _get_db() as conn:
         conn.execute(

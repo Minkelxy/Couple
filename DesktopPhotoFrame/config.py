@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 import app_paths
+from common_utils import log_warning
 
 CONFIG_PATH = app_paths.CONFIG_DIR / "photo_frame.json"
 
@@ -48,8 +49,8 @@ def load() -> dict:
     if CONFIG_PATH.exists():
         try:
             data.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
-        except (json.JSONDecodeError, OSError):
-            pass
+        except (json.JSONDecodeError, OSError) as e:
+            log_warning("相框配置加载失败，使用默认值: %s", e)
     # 类型校正：防止 JSON 里写出错误类型
     data["interval_sec"] = max(3, int(data.get("interval_sec", 15)))
     data["window_width"] = max(160, int(data.get("window_width", 320)))

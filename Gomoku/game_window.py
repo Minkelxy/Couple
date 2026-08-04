@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import weakref
 from datetime import datetime
 
 from PySide6.QtCore import Qt
@@ -20,15 +21,17 @@ from . import store
 from .board_widget import GomokuBoard
 
 # 模块级引用：当前 GameWindow 实例 + hub 引用（供懒创建使用）
-_active_window = None
+# _active_window 用弱引用：窗口关闭且无其他强引用时可被 GC，避免内存泄漏
+_active_window: weakref.ref | None = None
 _hub_ref: dict = {"hub": None}
 
 
 def set_hub(hub) -> None:
     """由 launcher 在创建/重载 SyncHub 后调用，更新 hub 引用。"""
     _hub_ref["hub"] = hub
-    if _active_window is not None:
-        _active_window._hub = hub
+    win = _active_window() if _active_window is not None else None
+    if win is not None:
+        win._hub = hub
 
 
 def handle_partner_event(meta: dict, content: str, attachment: bytes,
@@ -41,24 +44,30 @@ def handle_partner_event(meta: dict, content: str, attachment: bytes,
     evt = meta.get("type", "")
     if evt not in ("gomoku_move", "gomoku_ctrl"):
         return
-    if _active_window is None:
-        _active_window = GameWindow(hub=_hub_ref["hub"])
+    win = _active_window() if _active_window is not None else None
+    if win is None:
+        win = GameWindow(hub=_hub_ref["hub"])
+        # __init__ 已设置 _active_window 为弱引用
+        # 懒创建的窗口需 show，否则无强引用会被 GC（on_partner_ctrl 也会自行 show）
+        win.show()
     if evt == "gomoku_move":
-        _active_window.on_partner_move(meta, content, attachment, att_ext)
+        win.on_partner_move(meta, content, attachment, att_ext)
     else:
-        _active_window.on_partner_ctrl(meta, content, attachment, att_ext)
+        win.on_partner_ctrl(meta, content, attachment, att_ext)
 
 
 def open_window(hub) -> None:
     """复用或创建 GameWindow 并显示。由 launcher 调用。"""
     global _active_window
-    if _active_window is None:
-        _active_window = GameWindow(hub=hub)
+    win = _active_window() if _active_window is not None else None
+    if win is None:
+        win = GameWindow(hub=hub)
+        # __init__ 已设置 _active_window 为弱引用
     else:
-        _active_window._hub = hub
-    _active_window.show()
-    _active_window.raise_()
-    _active_window.activateWindow()
+        win._hub = hub
+    win.show()
+    win.raise_()
+    win.activateWindow()
 
 
 class HistoryWindow(QDialog):
@@ -126,7 +135,7 @@ class GameWindow(QMainWindow):
         super().__init__()
         self._hub = hub
         global _active_window
-        _active_window = self
+        _active_window = weakref.ref(self)
         self._my_color = "black"   # 本地始终为黑
         self._game_over = False
         self._i_requested_undo = False
