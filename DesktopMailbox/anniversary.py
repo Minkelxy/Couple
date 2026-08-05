@@ -64,7 +64,11 @@ def check_and_deliver() -> list[dict]:
                 continue
             _mark_sent(key)
         # 送达时间：当天指定小时，已过则立即
-        hour = int(anniv.get("deliver_hour", 8))
+        try:
+            hour = int(anniv.get("deliver_hour", 8))
+        except (TypeError, ValueError):
+            hour = 8
+        hour = max(0, min(23, hour))
         deliver_at = today.replace(hour=hour, minute=0, second=0, microsecond=0)
         if deliver_at <= today:
             deliver_at = today
