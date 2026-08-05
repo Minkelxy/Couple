@@ -19,10 +19,15 @@ a = Analysis(
         ('assets/icon.ico', 'assets'),
     ],
     hiddenimports=[
-        # PySide6 基础
+        # PySide6 基础（QtSvg / QtOpenGL 被 matplotlib backend_qtagg 间接依赖，必须保留）
         'PySide6.QtCore',
         'PySide6.QtGui',
         'PySide6.QtWidgets',
+        'PySide6.QtSvg',
+        'PySide6.QtSvgWidgets',
+        'PySide6.QtOpenGL',
+        'PySide6.QtOpenGLWidgets',
+        'PySide6.QtPrintSupport',
         # Pillow
         'PIL._tkinter_finder',
         # cryptography
@@ -109,10 +114,9 @@ a = Analysis(
         'PySide6.QtXml',
         'PySide6.QtDBus',
         'PySide6.QtBluetooth',
-        'PySide6.QtOpenGL',
-        'PySide6.QtOpenGLWidgets',
+        # 注意：QtSvg / QtOpenGL / QtOpenGLWidgets 被 matplotlib backend_qtagg 依赖，
+        #       不能 exclude，否则 ImportError: cannot import name 'QtSvg'
         'PySide6.QtPositioning',
-        'PySide6.QtPrintSupport',
         'PySide6.QtPdf',
         'PySide6.QtQml',
         'PySide6.QtQuick',
@@ -123,7 +127,6 @@ a = Analysis(
         'PySide6.QtSerialPort',
         'PySide6.QtStateMachine',
         'PySide6.QtTextToSpeech',
-        'PySide6.QtSvg',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
