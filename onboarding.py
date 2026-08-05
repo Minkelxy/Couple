@@ -98,6 +98,12 @@ class OnboardingWindow(QMainWindow):
         if path:
             self._image_dir.setText(path)
 
+    def closeEvent(self, event) -> None:
+        # 用户点窗口 X 或 Alt+F4 时也必须释放 finished，否则 launcher 的
+        # QEventLoop 永久阻塞，首次启动卡死。
+        self.finished.emit()
+        super().closeEvent(event)
+
     def _on_sync_toggled(self, on: bool) -> None:
         self._peer_host.setEnabled(on)
 

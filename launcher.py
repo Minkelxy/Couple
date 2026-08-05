@@ -436,7 +436,7 @@ def main() -> int:
     hub_holder["hub"].send_result.connect(lambda ok, msg: tray.show_toast("同步", msg))
     hub_holder["hub"].letter_received.connect(on_sync_received)
     hub_holder["hub"].event_received.connect(on_event_received)
-    app.aboutToQuit.connect(hub_holder["hub"].stop)
+    app.aboutToQuit.connect(lambda: hub_holder["hub"].stop())
 
     update_unread()
 

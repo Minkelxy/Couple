@@ -195,7 +195,13 @@ class ComposeWindow(QMainWindow):
         if idx == 4:
             return now + timedelta(weeks=1)
         # 自定义
-        return self._dt.dateTime().toPython()
+        # Qt6 的 QDateTime.currentDateTime() 携带系统时区，toPython() 返回
+        # aware datetime，与 datetime.now()（naive）比较会抛 TypeError。
+        # 统一剥离时区，保持与预设分支（均为 naive）一致。
+        dt = self._dt.dateTime().toPython()
+        if dt.tzinfo is not None:
+            dt = dt.replace(tzinfo=None)
+        return dt
 
     # ---------- 寄出 ----------
 

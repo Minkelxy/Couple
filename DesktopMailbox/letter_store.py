@@ -8,7 +8,9 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import threading
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -25,6 +27,10 @@ _LETTERS_DIR = config.DATA_DIR / "letters"
 # letter_id 仅允许 12 位十六进制（write_letter 用 uuid4().hex[:12] 生成）
 # 防御路径遍历：read/delete 时校验，避免 ../ 逃逸 _LETTERS_DIR
 _SAFE_ID_RE = re.compile(r"^[0-9a-f]{1,16}$")
+
+# 同步线程（LAN socket / 云轮询）与主线程并发写 mailbox.json，
+# read-modify-write 非原子会丢信；用一把模块级锁串行化所有写操作
+_LOCK = threading.Lock()
 
 
 def _now_iso() -> str:
@@ -47,9 +53,12 @@ def _load_meta() -> list[dict]:
 
 
 def _save_meta(items: list[dict]) -> None:
-    _META_PATH.write_text(
+    """原子写：先写临时文件再 os.replace，避免写入中途崩溃导致 JSON 截断损坏。"""
+    tmp = _META_PATH.with_suffix(".tmp")
+    tmp.write_text(
         json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8"
     )
+    os.replace(tmp, _META_PATH)
 
 
 def write_letter(
@@ -86,9 +95,10 @@ def write_letter(
         enc_att = crypto.encrypt(attachment_bytes)
         (_LETTERS_DIR / f"{letter_id}_att.enc").write_bytes(enc_att)
 
-    items = _load_meta()
-    items.append(meta)
-    _save_meta(items)
+    with _LOCK:
+        items = _load_meta()
+        items.append(meta)
+        _save_meta(items)
     return meta
 
 
@@ -150,21 +160,23 @@ def list_due_unread() -> list[dict]:
 
 
 def mark_read(letter_id: str) -> None:
-    items = _load_meta()
-    for it in items:
-        if it["id"] == letter_id:
-            it["read"] = True
-            break
-    _save_meta(items)
+    with _LOCK:
+        items = _load_meta()
+        for it in items:
+            if it["id"] == letter_id:
+                it["read"] = True
+                break
+        _save_meta(items)
 
 
 def delete_letter(letter_id: str) -> None:
     if not _safe_id(letter_id):
         log_warning("非法 letter_id，拒绝删除: %r", letter_id)
         return
-    items = _load_meta()
-    items = [it for it in items if it["id"] != letter_id]
-    _save_meta(items)
+    with _LOCK:
+        items = _load_meta()
+        items = [it for it in items if it["id"] != letter_id]
+        _save_meta(items)
     for suffix in (".enc", "_att.enc"):
         p = _LETTERS_DIR / f"{letter_id}{suffix}"
         if p.exists():

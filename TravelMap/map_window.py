@@ -383,6 +383,10 @@ class TravelMapWindow(QMainWindow):
 
     # ---------- 数据刷新 ----------
 
+    def refresh(self) -> None:
+        """公开刷新入口（收到对方 map 事件后由 launcher 调用）。"""
+        self._refresh()
+
     def _refresh(self) -> None:
         cities = store.list_all()
         n = store.count_visited()
