@@ -14,7 +14,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 import app_paths
 import migration
@@ -360,10 +360,26 @@ def main() -> int:
 
     def open_gomoku() -> None:
         nonlocal gomoku_win
-        # Gomoku 模块内部用 weakref 复用，这里保留 launcher 级强引用避免 GC
-        if gomoku_win is None or getattr(gomoku_win, "_destroyed", True):
+        # 第一次打开：让用户选择"仅本地体验"还是"立即邀请对方联机"
+        first_open = gomoku_win is None or getattr(gomoku_win, "_destroyed", True)
+        invite = False
+        if first_open:
+            box = QMessageBox()
+            box.setWindowTitle("五子棋")
+            box.setText("如何开启？")
+            box.setInformativeText(
+                "联机：向对方发邀请，对方接受后双方自动对齐棋盘\n"
+                "本地：仅在本电脑体验（可之后再点「邀请对方」按钮联机）"
+            )
+            invite_btn = box.addButton("📨 邀请对方联机", QMessageBox.AcceptRole)
+            local_btn = box.addButton("🎯 仅本地体验", QMessageBox.RejectRole)
+            box.exec()
+            if box.clickedButton() is invite_btn:
+                invite = True
+
+        if first_open:
             # 通过 Gomoku 模块的复用 API 创建窗口，保持双方行为一致
-            open_gomoku_window(hub_holder["hub"])
+            open_gomoku_window(hub_holder["hub"], invite=invite)
             # 模块内部有 _active_window 弱引用，拿过来存强引用
             from Gomoku.game_window import _active_window as _gomoku_active_win_ref
             _win = _gomoku_active_win_ref() if _gomoku_active_win_ref is not None else None
@@ -374,12 +390,16 @@ def main() -> int:
                     gomoku_win = None
                 try:
                     _win.destroyed.connect(_clear_gomoku_ref)
+                    setattr(_win, "_destroyed", True)
+                    _win.destroyed.connect(lambda *_: setattr(_win, "_destroyed", True))
                 except RuntimeError:
                     pass
         else:
             gomoku_win.show()
             gomoku_win.raise_()
             gomoku_win.activateWindow()
+            # 从托盘再打开时，如果上次只是本地体验、用户这次想联机，
+            # 已经可以直接点窗口左上角「📨 邀请对方」按钮；这里保持行为一致。
 
     # ===== 连接相框信号 =====
     tray.pf_next.connect(pf_window.show_next)
