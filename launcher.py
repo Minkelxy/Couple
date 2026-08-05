@@ -80,6 +80,7 @@ def main() -> int:
         loop.exec()
 
     # ===== 相框初始化 =====
+    pf_config.ensure_default_album()  # 首次或空目录时把 assets/default_album 示例图拷到用户 images
     pf_cfg = pf_config.load()
     images_dir = Path(pf_cfg["image_dir"])
     images_dir.mkdir(parents=True, exist_ok=True)
