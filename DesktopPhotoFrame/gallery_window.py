@@ -338,33 +338,25 @@ class GalleryGridWindow(QMainWindow):
         self._share_worker: _ShareWorker | None = None
         # 当前网格的图片列表（与 thumb index 对齐）
         self._grid_images: list[Path] = []
-        # hub 事件连接（set_hub 时需要断开旧的）
+        # 保留 _hub_event_conn 字段：用于向后兼容（当前版本事件由 launcher
+        # 统一路由，窗口不再自行订阅 event_received，避免同一张照片被重复
+        # 处理两次——launcher.on_event_received 中已经调用了 handle_photo_partner_event）。
         self._hub_event_conn = None
         self._build_ui()
         self._populate_albums()
-        # 接收对方共享的照片：photo 事件落盘并刷新相册下拉
-        if self._hub is not None:
-            try:
-                self._hub_event_conn = self._hub.event_received.connect(self._on_hub_event)
-            except (AttributeError, RuntimeError):
-                log_exception("连接同步事件失败")
 
     def set_hub(self, hub) -> None:
-        """设置变更时热更新同步引用，断开旧 hub 的事件回调并连接新的。"""
+        """设置变更时热更新同步引用。
+        事件由 launcher 统一路由分发，此处不再自行订阅 event_received，
+        避免 photo 事件被重复处理两次（重复落盘同一张照片）。
+        """
         if self._hub is not None and self._hub_event_conn is not None:
             try:
                 self._hub.event_received.disconnect(self._hub_event_conn)
             except (AttributeError, RuntimeError, TypeError):
-                # C++ 对象可能已销毁或连接无效
                 pass
             self._hub_event_conn = None
         self._hub = hub
-        if self._hub is not None:
-            try:
-                self._hub_event_conn = self._hub.event_received.connect(self._on_hub_event)
-            except (AttributeError, RuntimeError):
-                log_exception("连接新 hub 事件失败")
-                self._hub_event_conn = None
 
     def _build_ui(self) -> None:
         central = QWidget(self)
@@ -442,6 +434,8 @@ class GalleryGridWindow(QMainWindow):
         if self._thumb_worker is not None:
             try:
                 self._thumb_worker.requestInterruption()
+                # 断开信号，避免旧 worker 在切换相册后仍 emit 旧索引结果到新网格
+                self._thumb_worker.thumb_ready.disconnect(self._on_thumb_ready)
                 # 不强行 quit/wait：worker 会自行检测并退出，由 deleteLater 清理
                 self._thumb_worker.finished.connect(self._thumb_worker.deleteLater)
             except RuntimeError:
@@ -493,10 +487,9 @@ class GalleryGridWindow(QMainWindow):
         path_str = item.data(Qt.UserRole)
         if not path_str:
             return
-        # 找到双击项的索引
-        images = ip.list_images(self._album_combo.currentData() or "")
+        # 找到双击项的索引（直接用已缓存的列表，避免重复枚举目录）
         try:
-            idx = images.index(Path(path_str))
+            idx = self._grid_images.index(Path(path_str))
         except ValueError:
             idx = 0
         if self._gallery_win is not None:
@@ -550,18 +543,21 @@ class GalleryGridWindow(QMainWindow):
     def closeEvent(self, event) -> None:
         # 窗口关闭时停止后台 worker，避免向已销毁的 widget emit
         self._stop_thumb_worker()
-        if self._share_worker is not None and self._share_worker.isRunning():
-            self._share_worker.requestInterruption()
+        if self._share_worker is not None:
+            try:
+                # 断开信号，避免 worker 在窗口销毁后 emit 到已失效的槽
+                self._share_worker.progress.disconnect()
+                self._share_worker.finished_all.disconnect()
+            except RuntimeError:
+                pass
+            if self._share_worker.isRunning():
+                self._share_worker.requestInterruption()
         super().closeEvent(event)
 
     # ---------- 接收对方共享 ----------
-    def _on_hub_event(
-        self, etype: str, meta: dict, content: str, attachment: bytes, att_ext: str
-    ) -> None:
-        """处理同步中枢事件：photo 类型保存为对方共享照片并刷新下拉。"""
-        if etype == "photo":
-            handle_partner_event(meta, content, attachment, att_ext)
-            self._populate_albums()
+    def refresh_albums(self) -> None:
+        """刷新相册下拉（收到对方共享照片后由 launcher 调用）。"""
+        self._populate_albums()
 
 
 def handle_partner_event(
