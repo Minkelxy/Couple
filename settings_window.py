@@ -1,15 +1,15 @@
-"""综合设置窗口：相框/信箱/同步/纪念日/通用 五个标签页。"""
+"""综合设置窗口：相框/信箱/同步/联机身份/纪念日/通用 六个标签页。"""
 from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import Signal, Qt
-from PySide6.QtGui import QColor, QBrush
+from PySide6.QtCore import QObject, QThread, Signal, Qt, QTimer
+from PySide6.QtGui import QColor, QBrush, QGuiApplication, QClipboard
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFileDialog, QFormLayout, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton,
     QSpinBox, QTabWidget, QVBoxLayout, QWidget, QColorDialog, QGroupBox,
-    QDoubleSpinBox, QRadioButton, QButtonGroup,
+    QDoubleSpinBox, QRadioButton, QButtonGroup, QProgressBar, QInputDialog,
 )
 
 import autostart
@@ -17,9 +17,46 @@ import app_paths
 from DesktopPhotoFrame import config as pf_config
 from DesktopMailbox import config as mb_config
 
+import identity as idm
+from pairing import PairingSession, PairingProgress, PairingPhase
+
 
 # 「当前在用相册」列表项高亮颜色（浅粉，和主题色匹配）
 _CURRENT_ALBUM_BG = QColor("#ffe3ec")
+
+
+class _PairingWorker(QObject):
+    """配对流程的线程包装：把 PairingSession 回调搬到 UI 线程发 Signal。"""
+    progress = Signal(object)  # PairingProgress
+
+    def __init__(self, mode: str, token: str | None, server: str, nickname: str) -> None:
+        super().__init__()
+        self._mode = mode
+        self._token = token
+        self._server = server
+        self._nickname = nickname
+        self._session: PairingSession | None = None
+
+    def run(self) -> None:
+        def _cb(p: PairingProgress) -> None:
+            self.progress.emit(p)
+        try:
+            session = PairingSession(self._server, self._nickname, _cb)
+            self._session = session
+            if self._mode == "host":
+                session.start_host()
+            else:
+                session.start_guest(self._token or "")
+        except Exception as e:
+            _cb(PairingProgress(PairingPhase.FAILED, error_message=str(e)))
+
+    def confirm_safety(self, matched: bool) -> None:
+        if self._session is not None:
+            self._session.confirm_safety(matched)
+
+    def cancel(self) -> None:
+        if self._session is not None:
+            self._session.cancel()
 
 
 class SettingsWindow(QMainWindow):
@@ -29,7 +66,8 @@ class SettingsWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("设置 ⚙")
-        self.resize(660, 620)
+        self.resize(680, 720)
+        self.setMinimumSize(640, 680)
         self._build_ui()
         self._load_values()
 
@@ -43,8 +81,10 @@ class SettingsWindow(QMainWindow):
         tabs.addTab(self._build_photo_frame_tab(), "🖼 相框")
         tabs.addTab(self._build_mailbox_tab(), "✉ 信箱")
         tabs.addTab(self._build_sync_tab(), "🔄 同步")
+        tabs.addTab(self._build_identity_tab(), "🔐 联机身份")
         tabs.addTab(self._build_anniversary_tab(), "🎉 纪念日")
         tabs.addTab(self._build_general_tab(), "⚙ 通用")
+        self._tabs = tabs
         root.addWidget(tabs, 1)
 
         # 底部保存按钮
@@ -271,6 +311,299 @@ class SettingsWindow(QMainWindow):
 
         return tab
 
+    # ===== 联机身份标签页 =====
+    def _build_identity_tab(self) -> QWidget:
+        tab = QWidget()
+        outer = QVBoxLayout(tab)
+        outer.setSpacing(10)
+
+        # 1. 我
+        grp_me = QGroupBox("🧑 我的身份")
+        form_me = QFormLayout(grp_me)
+        self._id_my_fp = QLineEdit()
+        self._id_my_fp.setReadOnly(True)
+        self._id_copy_my_fp = QPushButton("复制指纹")
+        self._id_copy_my_fp.clicked.connect(lambda: self._copy_text(self._id_my_fp.text()))
+        row1 = QHBoxLayout()
+        row1.addWidget(self._id_my_fp, 1)
+        row1.addWidget(self._id_copy_my_fp)
+        wrap1 = QWidget(); wrap1.setLayout(row1)
+        form_me.addRow("公钥指纹:", wrap1)
+        self._id_my_pk = QLineEdit()
+        self._id_my_pk.setReadOnly(True)
+        self._id_my_pk.setPlaceholderText("（点击右侧复制完整公钥）")
+        self._id_copy_my_pk = QPushButton("复制公钥")
+        self._id_copy_my_pk.clicked.connect(lambda: self._copy_text(self._id_my_pk.text()))
+        row2 = QHBoxLayout()
+        row2.addWidget(self._id_my_pk, 1)
+        row2.addWidget(self._id_copy_my_pk)
+        wrap2 = QWidget(); wrap2.setLayout(row2)
+        form_me.addRow("完整公钥:", wrap2)
+        self._id_nick_me = QLineEdit()
+        self._id_nick_me.setPlaceholderText("配对时展示给对方的昵称，如「阿鹿」")
+        self._id_nick_me.setMaxLength(20)
+        form_me.addRow("我的昵称:", self._id_nick_me)
+        outer.addWidget(grp_me)
+
+        # 2. 对方
+        grp_them = QGroupBox("💑 对方身份（未配对则为空）")
+        form_them = QFormLayout(grp_them)
+        self._id_them_nick = QLineEdit()
+        self._id_them_nick.setReadOnly(True)
+        self._id_them_nick.setPlaceholderText("尚未与任何设备配对")
+        form_them.addRow("对方昵称:", self._id_them_nick)
+        self._id_them_fp = QLineEdit()
+        self._id_them_fp.setReadOnly(True)
+        self._id_them_fp.setPlaceholderText("尚未配对")
+        self._id_copy_them_fp = QPushButton("复制指纹")
+        self._id_copy_them_fp.clicked.connect(lambda: self._copy_text(self._id_them_fp.text()))
+        row3 = QHBoxLayout()
+        row3.addWidget(self._id_them_fp, 1)
+        row3.addWidget(self._id_copy_them_fp)
+        wrap3 = QWidget(); wrap3.setLayout(row3)
+        form_them.addRow("对方指纹:", wrap3)
+        self._id_safety = QLineEdit()
+        self._id_safety.setReadOnly(True)
+        self._id_safety.setPlaceholderText("尚未配对")
+        btn_safety = QPushButton("核对安全码")
+        btn_safety.clicked.connect(self._show_safety_dialog)
+        row4 = QHBoxLayout()
+        row4.addWidget(self._id_safety, 1)
+        row4.addWidget(btn_safety)
+        wrap4 = QWidget(); wrap4.setLayout(row4)
+        form_them.addRow("安全码:", wrap4)
+        self._id_channel = QLineEdit()
+        self._id_channel.setReadOnly(True)
+        self._id_channel.setPlaceholderText("尚未配对")
+        form_them.addRow("专属通道 ID:", self._id_channel)
+        row5 = QHBoxLayout()
+        self._btn_reset_partner = QPushButton("⚠ 解除配对")
+        self._btn_reset_partner.clicked.connect(self._on_reset_partner)
+        row5.addStretch(1); row5.addWidget(self._btn_reset_partner)
+        form_them.addRow(row5)
+        outer.addWidget(grp_them)
+
+        # 3. 配对向导
+        grp_pair = QGroupBox("🤝 开始配对（仅第一次需要，之后不用再填任何码）")
+        pv = QVBoxLayout(grp_pair)
+        tip = QLabel("配对是一次性的，完成后你们两台电脑会互相认出彼此，不需要再填任何识别码。"
+                     "<br>两台电脑分别选择一个角色：一台发起（获得 6 位配对码），另一台输入（输入那 6 位码）。")
+        tip.setWordWrap(True); tip.setStyleSheet("color:#666;")
+        pv.addWidget(tip)
+        row_btns = QHBoxLayout()
+        self._btn_host = QPushButton("① 发起配对（我这边显示 6 位码）")
+        self._btn_host.setStyleSheet(self._primary_btn_css())
+        self._btn_host.clicked.connect(self._on_start_host)
+        self._btn_guest = QPushButton("② 输入对方的 6 位配对码")
+        self._btn_guest.setStyleSheet(self._primary_btn_css())
+        self._btn_guest.clicked.connect(self._on_start_guest)
+        row_btns.addWidget(self._btn_host)
+        row_btns.addWidget(self._btn_guest)
+        pv.addLayout(row_btns)
+        # 状态行
+        self._pair_stage = QLabel("—— 请点击上面的按钮开始 ——")
+        self._pair_stage.setStyleSheet("padding:8px;border-radius:6px;background:#f6f7fb;color:#333;")
+        self._pair_stage.setWordWrap(True)
+        pv.addWidget(self._pair_stage)
+        self._pair_progress = QProgressBar()
+        self._pair_progress.setRange(0, 0)  # busy 进度条
+        self._pair_progress.hide()
+        pv.addWidget(self._pair_progress)
+        self._pair_cancel = QPushButton("取消配对")
+        self._pair_cancel.hide()
+        self._pair_cancel.clicked.connect(self._on_pair_cancel)
+        pv.addWidget(self._pair_cancel)
+        outer.addWidget(grp_pair)
+        outer.addStretch(1)
+
+        # 保存线程
+        self._pairing_thread: QThread | None = None
+        self._pairing_worker: _PairingWorker | None = None
+        return tab
+
+    @staticmethod
+    def _primary_btn_css() -> str:
+        return (
+            "QPushButton{background:#e65a7a;color:#fff;border:none;"
+            "border-radius:8px;padding:8px 16px;}"
+            "QPushButton:hover{background:#d94a6a;}"
+            "QPushButton:disabled{background:#ccc;}"
+        )
+
+    def _copy_text(self, text: str) -> None:
+        if not text:
+            return
+        cb = QGuiApplication.clipboard()
+        cb.setText(text, QClipboard.Clipboard)
+        QMessageBox.information(self, "已复制", "已复制到剪贴板。")
+
+    def _refresh_identity_ui(self) -> None:
+        status = idm.get_status()
+        self._id_my_fp.setText(status.my_fingerprint)
+        self._id_my_pk.setText(status.my_pk_b64)
+        # 昵称优先从「信箱的 my_name」取（配对时会同步用这个字段作为展示）
+        mb = mb_config.load()
+        nick = (mb.get("my_name") or "我").strip()
+        if nick and not self._id_nick_me.isModified():
+            self._id_nick_me.setText(nick[:20])
+        # 对方信息
+        if status.paired:
+            self._id_them_nick.setText(status.partner_nickname or "对方")
+            self._id_them_fp.setText(status.partner_fingerprint or "")
+            self._id_safety.setText(status.safety_code or "")
+            self._id_channel.setText(status.channel_id or "")
+            self._btn_reset_partner.setEnabled(True)
+        else:
+            self._id_them_nick.setText("")
+            self._id_them_fp.setText("")
+            self._id_safety.setText("")
+            self._id_channel.setText("")
+            self._btn_reset_partner.setEnabled(False)
+
+    def _show_safety_dialog(self) -> None:
+        status = idm.get_status()
+        if not status.paired or not status.safety_code:
+            QMessageBox.information(self, "安全码", "尚未与对方配对，没有安全码。")
+            return
+        code = status.safety_code
+        nick = status.partner_nickname or "对方"
+        QMessageBox.information(
+            self,
+            "核对安全码",
+            f"请通过电话/微信等<u>安全渠道</u>让对方打开「设置 → 🔐 联机身份 → 安全码」，<br>"
+            f"并念一下屏幕上的 6 位数字。<br><br>"
+            f"你这边显示的安全码为：<br>"
+            f"<div style='font-size:36px;font-weight:900;color:#e65a7a;"
+            f"letter-spacing:12px;text-align:center;margin:12px 0;'>{code}</div>"
+            f"如果两边数字<b>完全一样</b>，说明你们之间没有中间人，可以放心使用。<br>"
+            f"如果<b>不一样</b>，说明你们之间有人被转发了消息，请到设置里「解除配对」后重新开始。"
+        )
+
+    def _on_reset_partner(self) -> None:
+        ans = QMessageBox.question(
+            self, "确认解除配对",
+            "解除后本机将不再信任对方发来的签名消息，对方那边也需要解除。真的继续吗？",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if ans != QMessageBox.Yes:
+            return
+        idm.reset_partner()
+        self._refresh_identity_ui()
+        QMessageBox.information(self, "已解除", "已解除配对。")
+
+    # ---------- 配对向导 ----------
+
+    def _on_start_host(self) -> None:
+        mb = mb_config.load()
+        server = (mb.get("cloud_server") or "").strip()
+        if not server:
+            QMessageBox.warning(
+                self, "缺少云中转服务器",
+                "发起配对必须先在「🔄 同步」Tab 填好「云中转服务器地址」并保存。\n"
+                "（你们双方的消息都靠这台服务器的配对接口做公钥交换，局域网直连不需要交换公钥，但为了安全码可校验，仍要求走一次配对向导。）"
+            )
+            return
+        nick = (self._id_nick_me.text() or "我").strip() or "我"
+        self._start_pairing_thread("host", None, server, nick)
+
+    def _on_start_guest(self) -> None:
+        mb = mb_config.load()
+        server = (mb.get("cloud_server") or "").strip()
+        if not server:
+            QMessageBox.warning(
+                self, "缺少云中转服务器",
+                "先到「🔄 同步」Tab 填好「云中转服务器地址」并保存。"
+            )
+            return
+        token, ok = QInputDialog.getText(
+            self, "输入 6 位配对码",
+            "请输入对方屏幕上显示的 6 位配对码（不区分大小写，不含字母 I/L/O/0）："
+        )
+        if not ok:
+            return
+        nick = (self._id_nick_me.text() or "我").strip() or "我"
+        self._start_pairing_thread("guest", token.strip(), server, nick)
+
+    def _start_pairing_thread(self, mode: str, token: str | None, server: str, nickname: str) -> None:
+        self._pair_progress.show()
+        self._pair_cancel.show()
+        self._btn_host.setEnabled(False)
+        self._btn_guest.setEnabled(False)
+        self._pairing_thread = QThread(self)
+        self._pairing_worker = _PairingWorker(mode, token, server, nickname)
+        self._pairing_worker.moveToThread(self._pairing_thread)
+        self._pairing_thread.started.connect(self._pairing_worker.run)
+        self._pairing_worker.progress.connect(self._on_pair_progress)
+        self._pairing_thread.start()
+
+    def _on_pair_cancel(self) -> None:
+        if self._pairing_worker is not None:
+            try:
+                self._pairing_worker.cancel()
+            except Exception:
+                pass
+        self._pair_finished()
+        self._pair_stage.setText("已取消。")
+
+    def _pair_finished(self) -> None:
+        if self._pairing_thread is not None:
+            self._pairing_thread.quit()
+            self._pairing_thread.wait(3000)
+            self._pairing_thread = None
+        self._pairing_worker = None
+        self._pair_progress.hide()
+        self._pair_cancel.hide()
+        self._btn_host.setEnabled(True)
+        self._btn_guest.setEnabled(True)
+
+    def _on_pair_progress(self, p: PairingProgress) -> None:
+        phase = p.phase
+        if phase == PairingPhase.WAITING_PARTNER:
+            if p.token:
+                self._pair_stage.setText(
+                    "正在等待对方输入配对码……<br>"
+                    f"<div style='font-size:48px;font-weight:900;color:#e65a7a;"
+                    f"letter-spacing:24px;text-align:center;margin:16px 0;'>{p.token}</div>"
+                    "<b>请把这 6 位数字告诉对方</b>（微信/电话都可以，它是一次性短期胶水，泄漏也没用），"
+                    "对方在设置里选「② 输入对方的 6 位配对码」即可。"
+                )
+            else:
+                self._pair_stage.setText("已提交配对码，正在与发起方握手……（最长 10 分钟内有效）")
+        elif phase == PairingPhase.SHOW_SAFETY:
+            # UI 线程弹对话框：安全码核对
+            safety = p.safety_code or "??????"
+            nick = p.partner_nickname or "对方"
+            ans = QMessageBox.question(
+                self, "核对安全码",
+                f"已收到「{nick}」的配对请求。<br><br>"
+                f"请让对方打开「设置 → 🔐 联机身份 → 安全码」念一下他屏幕上的 6 位数字，<br>"
+                f"你这边显示的安全码为：<br>"
+                f"<div style='font-size:36px;font-weight:900;color:#e65a7a;"
+                f"letter-spacing:12px;text-align:center;margin:12px 0;'>{safety}</div>"
+                f"两边数字<b>完全一样吗？</b>"
+            )
+            matched = (ans == QMessageBox.Yes)
+            if self._pairing_worker is not None:
+                self._pairing_worker.confirm_safety(matched)
+            if not matched:
+                self._pair_finished()
+                self._pair_stage.setText("你取消了安全码核对，配对已停止。")
+        elif phase == PairingPhase.DONE:
+            self._pair_finished()
+            self._refresh_identity_ui()
+            self._pair_stage.setText(
+                f"✅ <b>配对成功！</b><br>"
+                f"专属通道 ID：{p.channel_id or ''}<br>"
+                f"你们之间的所有信件/照片/五子棋都由 Ed25519 签名校验，外人再也冒充不了。<br>"
+                f"如果以后想换配对对象，随时可以点「解除配对」重来。"
+            )
+            self.settings_changed.emit()  # 通知外部重建 hub 走 channel 模式
+        elif phase == PairingPhase.FAILED:
+            self._pair_finished()
+            msg = p.error_message or "配对失败"
+            self._pair_stage.setText(f"❌ 配对失败：{msg}")
+
     # ===== 通用标签页 =====
     def _build_general_tab(self) -> QWidget:
         tab = QWidget()
@@ -339,6 +672,9 @@ class SettingsWindow(QMainWindow):
         suite = app_paths.load_suite()
         self._together_since.setText(str(suite.get("together_since", "")))
         self._autostart.setChecked(autostart.is_enabled())
+
+        # 身份页初始化
+        self._refresh_identity_ui()
 
     # ===== 交互处理 =====
     def _pick_color(self) -> None:

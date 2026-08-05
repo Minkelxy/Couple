@@ -1,12 +1,27 @@
 """云中转服务器：在两台不在同一局域网的电脑间转发信件。
 
 接口（与 DesktopMailbox/cloud_sync.py 对应）：
-  POST /api/send   — 发送一封信
-  GET  /api/poll   — 增量拉取新信件
-  GET  /health     — 健康检查
-  GET  /            — 简单状态页
 
-存储：SQLite（letters.db，自动建表，WAL 模式支持多 worker）
+  == 旧的 legacy 路径（保留过渡期，仍支持 pair_code）==
+  POST /api/send        — 发送一封信（入参带 pair_code）
+  GET  /api/poll        — 增量拉取（入参带 pair_code）
+
+  == 新的公钥身份路径（推荐）==
+  POST /api/pairing/declare  — 配对双方分别声明自己的 pk/nickname 绑定一个 6 位 token
+  GET  /api/pairing/poll     — 配对双方轮询：对方声明了吗？双方都 confirm 了吗？
+  POST /api/pairing/confirm  — 配对双方各自用 nonce 签名证明身份 + 确认安全码
+  POST /api/send        — 发送一封信（入参带 channel_id + pk_fp + sig_b64，签名校验通过才收）
+  GET  /api/poll        — 增量拉取（入参带 channel_id + pk_fp + sig_b64，签名校验通过才回）
+
+通用：
+  GET  /health          — 健康检查
+  GET  /                — 简单状态页
+
+存储：
+  - SQLite（letters.db，自动建表，WAL 模式支持多 worker）
+  - 配对态：内存 dict（重启清空，TTL 10 分钟自动清）
+  - 通道成员：SQLite channels 表（永久保留，已配对的双方永远能认出彼此）
+
 清理：后台线程每 6 小时清理 30 天以上的信件（分批）。
 
 运行：
@@ -15,20 +30,25 @@
         （不建议超过 2 worker，SQLite 多 worker 并发仍受限，WAL 可减轻）
 
 安全建议：
-  - 配对码就是身份验证，双方共用同一码
+  - 配对成功后通道绑定双方公钥；所有 send/poll 请求都会在服务端 Ed25519 验签
   - 生产环境务必配置 HTTPS（nginx 反向代理 + Let's Encrypt）
   - 信件正文/附件在客户端已 base64 编码，但服务器明文存储，请勿在公共服务器长期保留
 """
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import re
+import secrets
 import sqlite3
 import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from flask import Flask, jsonify, request
 
 app = Flask(__name__)
@@ -50,11 +70,24 @@ _POLL_BATCH_LIMIT = 1000  # 单次 poll 最多返回 1000 封，避免断网很�
 _MAX_REQUEST_BYTES = 110 * 1024 * 1024
 app.config["MAX_CONTENT_LENGTH"] = _MAX_REQUEST_BYTES
 
-# pair_code 白名单：字母、数字、下划线、短横线（用作后续若扩展为文件名也安全）
+# pair_code / channel_id 白名单：字母、数字、下划线、短横线（hex 也合法）
 _PAIR_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
-# ISO 8601 since 基本校验：YYYY-MM-DDTHH:MM:SS(.ffffff)?  长度 20~33
-# （不要求精确匹配格式，只是拒绝明显乱码/超长/奇怪字符导致 SQLite 字符串比较拖慢索引）
+# ISO 8601 since 基本校验
 _SINCE_RE = re.compile(r"^[0-9T:.\-]{16,64}$")
+
+# ========== 配对状态（内存，重启清空，10 分钟 TTL）==========
+_PAIRING: dict[str, dict] = {}
+_PAIRING_TTL_SEC = 600
+_PAIRING_LOCK = threading.Lock()
+
+
+def _b64e(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def _b64d(s: str) -> bytes:
+    pad = "=" * (-len(s) % 4)
+    return base64.urlsafe_b64decode(s + pad)
 
 
 def _is_valid_pair(pair_code: str) -> bool:
@@ -69,12 +102,40 @@ def _is_valid_since(since: str) -> bool:
     return _SINCE_RE.match(since) is not None
 
 
+def _is_valid_pk_b64(pk_b64: str) -> bool:
+    """Ed25519 公钥：32 字节 raw，base64url 编码约 43 字符。"""
+    if not isinstance(pk_b64, str) or not (40 <= len(pk_b64) <= 64):
+        return False
+    try:
+        pk_bytes = _b64d(pk_b64)
+        Ed25519PublicKey.from_public_bytes(pk_bytes)
+        return True
+    except Exception:
+        return False
+
+
+def _verify_sig(pk_b64: str, sig_b64: str, plain: bytes) -> bool:
+    try:
+        pk = Ed25519PublicKey.from_public_bytes(_b64d(pk_b64))
+        pk.verify(_b64d(sig_b64), plain)
+        return True
+    except (InvalidSignature, ValueError, Exception):
+        return False
+
+
+def _canonical_json(obj) -> bytes:
+    return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def _pk_fp(pk_bytes: bytes) -> str:
+    return _b64e(hashlib.sha256(pk_bytes).digest()[:8])
+
+
 # ---------- 数据库 ----------
 
 def _get_db() -> sqlite3.Connection:
     conn = sqlite3.connect(str(_DB_PATH), check_same_thread=False, timeout=30.0)
     conn.row_factory = sqlite3.Row
-    # WAL：多 worker gunicorn 并发不再 database is locked（减轻，仍建议 worker<=2）
     try:
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute("PRAGMA synchronous=NORMAL;")
@@ -99,10 +160,238 @@ def _init_db() -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_pair_created ON letters(pair_code, created_at)"
         )
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS channels (
+                channel_id   TEXT PRIMARY KEY NOT NULL,
+                member_a_pk  TEXT NOT NULL,
+                member_b_pk  TEXT NOT NULL,
+                created_at   TEXT NOT NULL
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_chan_a ON channels(member_a_pk)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_chan_b ON channels(member_b_pk)"
+        )
         conn.commit()
 
 
-# ---------- 接口 ----------
+def _channel_members(channel_id: str) -> tuple[str, str] | None:
+    """返回 (member_a_pk_b64, member_b_pk_b64)。"""
+    if not _is_valid_pair(channel_id):
+        return None
+    with _get_db() as conn:
+        row = conn.execute(
+            "SELECT member_a_pk, member_b_pk FROM channels WHERE channel_id = ?",
+            (channel_id,),
+        ).fetchone()
+        if not row:
+            return None
+        return row["member_a_pk"], row["member_b_pk"]
+
+
+def _channel_resolve_pk(channel_id: str, pk_fp: str) -> str | None:
+    """给定 fp 反查该 channel 下对应的完整 pk_b64，找不到返回 None。"""
+    members = _channel_members(channel_id)
+    if not members:
+        return None
+    for pkb64 in members:
+        if _pk_fp(_b64d(pkb64)) == pk_fp:
+            return pkb64
+    return None
+
+
+def _save_channel(channel_id: str, pk_a: str, pk_b: str) -> None:
+    with _LOCK, _get_db() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO channels(channel_id, member_a_pk, member_b_pk, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (channel_id, pk_a, pk_b, _now_iso()),
+        )
+        conn.commit()
+
+
+# ---------- 配对 API ----------
+
+def _pairing_expire_locked() -> None:
+    now = time.time()
+    to_del = [tok for tok, s in _PAIRING.items() if now - s["created_at"] > _PAIRING_TTL_SEC]
+    for t in to_del:
+        del _PAIRING[t]
+
+
+@app.route("/api/pairing/declare", methods=["POST"])
+def api_pairing_declare() -> tuple:
+    data = request.get_json(silent=True) or {}
+    token = (data.get("token") or "").strip().upper()
+    role = (data.get("role") or "").strip().lower()
+    pk_b64 = (data.get("pk_b64") or "").strip()
+    nickname = (data.get("nickname") or "").strip()[:40]
+    if len(token) != 6 or not re.fullmatch(r"[A-HJ-NP-Z2-9]{6}", token):
+        return jsonify({"ok": False, "message": "token 格式必须是 6 位不含 I/L/0/O 的字母数字"}), 400
+    if role not in ("host", "guest"):
+        return jsonify({"ok": False, "message": "role 必须是 host 或 guest"}), 400
+    if not _is_valid_pk_b64(pk_b64):
+        return jsonify({"ok": False, "message": "非法公钥"}), 400
+
+    with _PAIRING_LOCK:
+        _pairing_expire_locked()
+        state = _PAIRING.get(token)
+        if state is None:
+            state = {
+                "host": None,
+                "guest": None,
+                "created_at": time.time(),
+            }
+            _PAIRING[token] = state
+        slot = state.get(role)
+        # 允许同角色同 pk 重复 declare（刷新 TTL 用），但不同 pk 抢同一 slot 拒绝
+        if slot is not None and slot["pk_b64"] != pk_b64:
+            return jsonify({
+                "ok": False,
+                "message": "该 token 已被另一个设备占用，请双方重新生成配对码。",
+            }), 409
+        nonce = secrets.token_urlsafe(12)
+        state[role] = {
+            "pk_b64": pk_b64,
+            "nickname": nickname,
+            "nonce": nonce,
+            "confirmed": False,
+        }
+        # 每次 declare 刷新该 token 的 TTL（等价于重置到 now）
+        state["created_at"] = time.time()
+    return jsonify({"ok": True, "nonce": nonce}), 200
+
+
+@app.route("/api/pairing/poll")
+def api_pairing_poll() -> tuple:
+    token = (request.args.get("token") or "").strip().upper()
+    role = (request.args.get("role") or "").strip().lower()
+    step = (request.args.get("step") or "wait_partner").strip()
+    if len(token) != 6 or role not in ("host", "guest"):
+        return jsonify({"ok": False, "message": "token/role 缺失或非法"}), 400
+    with _PAIRING_LOCK:
+        _pairing_expire_locked()
+        state = _PAIRING.get(token)
+        if state is None or state.get(role) is None:
+            return jsonify({"ok": False, "message": "配对记录不存在（可能已过期）", "fatal": True}), 410
+        partner_role = "guest" if role == "host" else "host"
+        partner = state.get(partner_role)
+        if step == "wait_partner":
+            if partner is None:
+                return jsonify({"ok": True, "partner_ready": False}), 200
+            return jsonify({
+                "ok": True,
+                "partner_ready": True,
+                "partner": {
+                    "pk_b64": partner["pk_b64"],
+                    "nickname": partner["nickname"],
+                },
+            }), 200
+        if step == "both_confirmed":
+            host = state.get("host") or {}
+            guest = state.get("guest") or {}
+            if not host.get("confirmed") or not guest.get("confirmed"):
+                return jsonify({"ok": True, "both_confirmed": False}), 200
+            # 双方都确认：计算 channel_id，写库，从 _PAIRING 移除
+            a_pk, b_pk = host["pk_b64"], guest["pk_b64"]
+            a_bytes, b_bytes = _b64d(a_pk), _b64d(b_pk)
+            concat = a_bytes + b_bytes if a_bytes <= b_bytes else b_bytes + a_bytes
+            channel_id = hashlib.sha256(concat).hexdigest()[:24]
+            _save_channel(channel_id, a_pk, b_pk)
+            _PAIRING.pop(token, None)
+            return jsonify({
+                "ok": True,
+                "both_confirmed": True,
+                "channel_id": channel_id,
+            }), 200
+        return jsonify({"ok": False, "message": "未知 step"}), 400
+
+
+@app.route("/api/pairing/confirm", methods=["POST"])
+def api_pairing_confirm() -> tuple:
+    data = request.get_json(silent=True) or {}
+    token = (data.get("token") or "").strip().upper()
+    role = (data.get("role") or "").strip().lower()
+    my_nonce = (data.get("my_nonce") or "").strip()
+    sig_b64 = (data.get("sig_b64") or "").strip()
+    safety_confirmed = bool(data.get("safety_confirmed"))
+    if len(token) != 6 or role not in ("host", "guest"):
+        return jsonify({"ok": False, "message": "token/role 非法"}), 400
+    if not safety_confirmed:
+        return jsonify({"ok": False, "message": "未确认安全码一致"}), 400
+    with _PAIRING_LOCK:
+        state = _PAIRING.get(token)
+        if state is None:
+            return jsonify({"ok": False, "message": "配对记录不存在或已过期", "fatal": True}), 410
+        slot = state.get(role)
+        if slot is None:
+            return jsonify({"ok": False, "message": "请先 declare 再 confirm"}), 400
+        if slot.get("nonce") != my_nonce:
+            return jsonify({"ok": False, "message": "nonce 不匹配，请重新配对"}), 400
+        # 对方 role 的 partner_pk_b64（用于签名原文构造）
+        partner_role = "guest" if role == "host" else "host"
+        partner_pk_b64 = ""
+        if state.get(partner_role) is not None:
+            partner_pk_b64 = state[partner_role]["pk_b64"]
+        pk_b64 = slot["pk_b64"]
+        plain = f"{role}|{token}|{my_nonce}|{partner_pk_b64}".encode("utf-8")
+        if not _verify_sig(pk_b64, sig_b64, plain):
+            return jsonify({"ok": False, "message": "确认签名校验失败"}), 403
+        slot["confirmed"] = True
+    return jsonify({"ok": True}), 200
+
+
+# ---------- 旧接口 send / poll 的签名校验 + channel 支持 ----------
+
+def _signing_digest(meta: dict, content_b64: str, attach_b64: str, attach_ext: str) -> bytes:
+    """注意：客户端签名用的是「明文 content + att + meta(剔除 sig_*)」。
+    服务端这里存的 b64 就是客户端上传的 b64，所以签名原文应与客户端 identity.sign_message 一致。
+    但客户端传上来的 content_base64 是「已 base64 的 content」，对应客户端的 content.decode(base64) 后原内容；
+    所以这里必须把 content_b64 解码后再拼哈希，才能和客户端的 sha256(canon_meta + utf8(content) + att_bytes + utf8(att_ext)) 对齐。
+    """
+    m = {k: v for k, v in meta.items() if k not in ("pk_fp", "sig_b64")}
+    h = hashlib.sha256()
+    h.update(_canonical_json(m))
+    try:
+        content_bytes = _b64d(content_b64) if content_b64 else b""
+    except Exception:
+        content_bytes = content_b64.encode("utf-8", errors="ignore")
+    h.update(content_bytes)
+    try:
+        att_bytes = _b64d(attach_b64) if attach_b64 else b""
+    except Exception:
+        att_bytes = attach_b64.encode("utf-8", errors="ignore")
+    h.update(att_bytes)
+    h.update((attach_ext or "").encode("utf-8"))
+    return h.digest()
+
+
+def _resolve_and_verify_channel(
+    channel_id: str,
+    meta: dict,
+    content_b64: str,
+    attach_b64: str,
+    attach_ext: str,
+) -> tuple[bool, str]:
+    """用 channel_id + meta.pk_fp + meta.sig_b64 做签名校验。
+    返回 (是否通过, 说明)。
+    """
+    if not isinstance(meta, dict):
+        return False, "meta 不是 dict"
+    pk_fp = meta.get("pk_fp") or ""
+    sig_b64 = meta.get("sig_b64") or ""
+    if not pk_fp or not sig_b64:
+        return False, "缺少 pk_fp/sig_b64（新的身份系统已启用，请先完成配对向导）"
+    member_pk = _channel_resolve_pk(channel_id, pk_fp)
+    if not member_pk:
+        return False, "该 channel_id 下找不到此发送方（请双方先完成配对向导，或走旧 pair_code 模式）"
+    digest = _signing_digest(meta, content_b64, attach_b64, attach_ext)
+    if not _verify_sig(member_pk, sig_b64, digest):
+        return False, "签名校验失败，消息被拒绝"
+    return True, "ok"
+
 
 @app.route("/health")
 def health() -> tuple:
@@ -116,9 +405,11 @@ def index() -> tuple:
         pairs = conn.execute(
             "SELECT pair_code, COUNT(*) AS n FROM letters GROUP BY pair_code"
         ).fetchall()
+        chans = conn.execute("SELECT COUNT(*) AS n FROM channels").fetchone()["n"]
     return jsonify({
-        "service": "桌面相册云中转",
+        "service": "CoupleSuite 云中转 (公钥身份版本)",
         "total_letters": total,
+        "paired_channels": chans,
         "pairs": [dict(p) for p in pairs],
         "time": _now_iso(),
     }), 200
@@ -130,54 +421,53 @@ def api_send() -> tuple:
     if not isinstance(data, dict):
         return jsonify({"ok": False, "error": "invalid JSON body"}), 400
     pair_code = (data.get("pair_code") or "").strip()
-    if not pair_code:
-        return jsonify({"ok": False, "error": "missing pair_code"}), 400
-    if not _is_valid_pair(pair_code):
-        return jsonify({
-            "ok": False,
-            "error": f"invalid pair_code (len {_MIN_PAIR_LEN}-{_MAX_PAIR_LEN}, "
-                     f"only letters/digits/-/_)",
-        }), 400
+    channel_id = (data.get("channel_id") or "").strip()
+    if not pair_code and not channel_id:
+        return jsonify({"ok": False, "error": "missing pair_code 或 channel_id"}), 400
 
     meta = data.get("meta")
     if not isinstance(meta, dict):
-        # 兼容旧版本客户端 meta 缺省
         meta = {}
     content_b64 = data.get("content_base64") or ""
     attach_b64 = data.get("attachment_base64") or ""
     attach_ext = data.get("attachment_ext") or ""
-
-    # 类型校验
     if not isinstance(content_b64, str) or not isinstance(attach_b64, str) \
             or not isinstance(attach_ext, str):
         return jsonify({"ok": False, "error": "invalid field type"}), 400
-
-    # 防御：限制附件大小，防止恶意大包撑爆存储/内存
     if len(attach_b64) > _MAX_ATTACH_B64_LEN:
         return jsonify({"ok": False, "error": "attachment too large"}), 413
-    # 正文也限制（文本，2MB 足够）
     if len(content_b64) > _MAX_CONTENT_B64_LEN:
         return jsonify({"ok": False, "error": "content too large"}), 413
-    # meta 序列化后大小限制（避免超长 JSON 元数据）
+    if len(attach_ext) > _MAX_ATTACH_EXT_LEN:
+        return jsonify({"ok": False, "error": "attachment_ext too long"}), 400
     meta_str = _dumps(meta)
     if len(meta_str.encode("utf-8")) > _MAX_META_B64_LEN:
         return jsonify({"ok": False, "error": "meta too large"}), 413
-    # attach_ext 长度限制
-    if len(attach_ext) > _MAX_ATTACH_EXT_LEN:
-        return jsonify({"ok": False, "error": "attachment_ext too long"}), 400
+
+    # ------- 路由：channel_id 模式 vs legacy pair_code 模式 -------
+    bucket_key: str
+    if channel_id:
+        if not _is_valid_pair(channel_id):
+            return jsonify({"ok": False, "error": "非法 channel_id 格式"}), 400
+        ok, msg = _resolve_and_verify_channel(channel_id, meta, content_b64, attach_b64, attach_ext)
+        if not ok:
+            return jsonify({"ok": False, "error": f"channel 校验失败：{msg}"}), 403
+        bucket_key = channel_id
+    else:
+        # legacy 路径：仍然保留 pair_code 模式（过渡期），不做签名，只是 pair_code 基本校验
+        if not _is_valid_pair(pair_code):
+            return jsonify({
+                "ok": False,
+                "error": f"invalid pair_code (len {_MIN_PAIR_LEN}-{_MAX_PAIR_LEN}, "
+                         f"only letters/digits/-/_)",
+            }), 400
+        bucket_key = pair_code
 
     with _LOCK, _get_db() as conn:
         conn.execute(
             "INSERT INTO letters(pair_code, meta, content_b64, attach_b64, attach_ext, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                pair_code,
-                meta_str,
-                content_b64,
-                attach_b64,
-                attach_ext,
-                _now_iso(),
-            ),
+            (bucket_key, meta_str, content_b64, attach_b64, attach_ext, _now_iso()),
         )
         conn.commit()
     return jsonify({"ok": True}), 200
@@ -186,17 +476,44 @@ def api_send() -> tuple:
 @app.route("/api/poll")
 def api_poll() -> tuple:
     pair_code = (request.args.get("pair_code") or "").strip()
-    if not pair_code:
-        return jsonify({"ok": False, "error": "missing pair_code"}), 400
-    if not _is_valid_pair(pair_code):
-        return jsonify({
-            "ok": False,
-            "error": f"invalid pair_code (len {_MIN_PAIR_LEN}-{_MAX_PAIR_LEN}, "
-                     f"only letters/digits/-/_)",
-        }), 400
+    channel_id = (request.args.get("channel_id") or "").strip()
+    pk_fp = (request.args.get("pk_fp") or "").strip()
+    sig_b64 = (request.args.get("sig_b64") or "").strip()
+    if not pair_code and not channel_id:
+        return jsonify({"ok": False, "error": "missing pair_code 或 channel_id"}), 400
+
+    bucket_key: str
+    if channel_id:
+        if not _is_valid_pair(channel_id):
+            return jsonify({"ok": False, "error": "非法 channel_id 格式"}), 400
+        if not pk_fp or not sig_b64:
+            return jsonify({
+                "ok": False,
+                "error": "channel 模式必须附带 pk_fp + sig_b64 签名参数证明你是该通道成员之一",
+            }), 401
+        member_pk = _channel_resolve_pk(channel_id, pk_fp)
+        if not member_pk:
+            return jsonify({
+                "ok": False,
+                "error": "该 channel_id 下找不到你这个发送方（请双方先完成配对向导，或走旧 pair_code 模式）",
+            }), 403
+        # 签名原文：poll_auth|channel_id|pk_fp|since
+        since = (request.args.get("since") or "").strip()
+        plain = f"poll_auth|{channel_id}|{pk_fp}|{since}".encode("utf-8")
+        if not _verify_sig(member_pk, sig_b64, plain):
+            return jsonify({"ok": False, "error": "poll 签名校验失败"}), 403
+        bucket_key = channel_id
+    else:
+        if not _is_valid_pair(pair_code):
+            return jsonify({
+                "ok": False,
+                "error": f"invalid pair_code (len {_MIN_PAIR_LEN}-{_MAX_PAIR_LEN}, "
+                         f"only letters/digits/-/_)",
+            }), 400
+        bucket_key = pair_code
+
     since = (request.args.get("since") or "").strip()
     if since and not _is_valid_since(since):
-        # since 格式不对：直接 since 置空返回前 1000 封，让客户端下次从新 server_ts 继续
         since = ""
 
     with _get_db() as conn:
@@ -205,14 +522,14 @@ def api_poll() -> tuple:
                 "SELECT meta, content_b64, attach_b64, attach_ext, created_at "
                 "FROM letters WHERE pair_code = ? AND created_at > ? "
                 "ORDER BY created_at ASC LIMIT ?",
-                (pair_code, since, _POLL_BATCH_LIMIT + 1),
+                (bucket_key, since, _POLL_BATCH_LIMIT + 1),
             ).fetchall()
         else:
             rows = conn.execute(
                 "SELECT meta, content_b64, attach_b64, attach_ext, created_at "
                 "FROM letters WHERE pair_code = ? "
                 "ORDER BY created_at ASC LIMIT ?",
-                (pair_code, _POLL_BATCH_LIMIT + 1),
+                (bucket_key, _POLL_BATCH_LIMIT + 1),
             ).fetchall()
 
     has_more = len(rows) > _POLL_BATCH_LIMIT
@@ -241,10 +558,10 @@ def api_poll() -> tuple:
 def _cleanup_loop() -> None:
     while True:
         time.sleep(_CLEANUP_INTERVAL_SEC)
+        # 1. 信件：30 天过期
         cutoff = (datetime.utcnow() - timedelta(days=_RETENTION_DAYS)).isoformat(timespec="microseconds")
         try:
             with _LOCK, _get_db() as conn:
-                # 分批删除：每次 500 条，避免长期持锁阻塞其他请求
                 deleted = 0
                 while True:
                     cur = conn.execute(
@@ -258,12 +575,16 @@ def _cleanup_loop() -> None:
                         break
                     deleted += cur.rowcount
                 if deleted:
-                    print(f"[cleanup] removed {deleted} letters before {cutoff}",
-                          flush=True)
+                    print(f"[cleanup] removed {deleted} letters before {cutoff}", flush=True)
         except Exception:
-            # 单个清理异常不退出整个 daemon 线程，下一轮继续
             import traceback
             traceback.print_exc()
+        # 2. 配对态：10 分钟
+        try:
+            with _PAIRING_LOCK:
+                _pairing_expire_locked()
+        except Exception:
+            pass
 
 
 # ---------- 工具 ----------
@@ -291,8 +612,9 @@ threading.Thread(target=_cleanup_loop, daemon=True).start()
 
 
 if __name__ == "__main__":
-    # 开发模式：直接运行
     print("中转服务器启动: http://127.0.0.1:5000")
     print("健康检查: http://127.0.0.1:5000/health")
+    print("公钥身份通道说明：先 /api/pairing/declare→poll→confirm 配对，"
+          "然后 /api/send 和 /api/poll 走 channel_id 模式")
     print("生产部署请用: gunicorn -w 4 -b 0.0.0.0:5000 relay_server:app")
     app.run(host="0.0.0.0", port=5000, debug=False)

@@ -467,6 +467,26 @@ def main() -> int:
             f"已自动投递 {len(anniv_created)} 封纪念日信件",
         )
 
+    # 一次性气泡提示：如果还没做公钥配对，推荐用户去做（更安全、不需要再填识别码）
+    try:
+        import identity as idm
+        _st = idm.get_status()
+        _mb_cfg = mb_config.load()
+        _has_cloud = bool(_mb_cfg.get("cloud_server", "").strip())
+        if not _st.paired and _has_cloud:
+            # 用 QTimer.singleShot 让主线程有机会先弹主窗口，再气泡不被挡住
+            from PySide6.QtCore import QTimer
+            def _tip():
+                tray.show_toast(
+                    "🔐 建议完成配对",
+                    "打开「设置 → 🔐 联机身份」完成一次性配对，之后就不用再填识别码啦，"
+                    "双方消息还会自动签名校验，外人冒充不了。",
+                )
+            QTimer.singleShot(1500, _tip)
+    except Exception:
+        # 任何身份初始化异常都不影响主程序继续
+        pass
+
     return app.exec()
 
 

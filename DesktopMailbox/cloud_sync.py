@@ -1,10 +1,16 @@
 """云中转同步客户端：通过 HTTP 中转服务器收发信件。
 
-服务器需提供两个接口：
+支持两种认证模式（自动选择）：
+  1. 新公钥身份模式（推荐）：已完成配对向导时使用
+     - 按 identity.get_status().channel_id 作为 bucket key
+     - 每次发送前调用 identity.sign_message() 在 meta 里注入 pk_fp + sig_b64，服务端 Ed25519 验签
+     - 每次 poll 用私钥签一段 `poll_auth|channel_id|pk_fp|since`，服务端验签才回数据
+  2. legacy pair_code 模式（过渡期）：未配对时保留原行为
+     - 用 pair_code 做桶；不做签名，依赖 pair_code 保密性
+
+服务器接口：
   POST /api/send   — 发送一封信
   GET  /api/poll   — 增量拉取新信件
-
-所有方法均不抛异常，失败返回 False 或空值。
 """
 from __future__ import annotations
 
@@ -13,13 +19,20 @@ import json
 import urllib.parse
 import urllib.request
 
-from common_utils import MAX_ATTACHMENT_BYTES, log_exception, log_warning
+import identity as idm
+from common_utils import MAX_ATTACHMENT_BYTES, log_exception, log_info, log_warning
+
+
+def _b64e(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
 
 
 class CloudSyncClient:
     def __init__(self, server: str, pair_code: str) -> None:
         self._server = server.rstrip("/")
-        self._pair_code = pair_code
+        self._pair_code = pair_code  # legacy 兜底：用户未配对时仍可用
+
+    # ---------- 发送 ----------
 
     def send_letter(
         self,
@@ -28,23 +41,9 @@ class CloudSyncClient:
         attachment: bytes,
         att_ext: str,
     ) -> bool:
-        """向 {server}/api/send POST JSON。
-
-        请求体: {pair_code, meta, content_base64, attachment_base64, attachment_ext}
-        失败返回 False，不抛异常。
-        """
+        """失败返回 False，不抛异常。"""
         try:
-            payload = {
-                "pair_code": self._pair_code,
-                "meta": meta,
-                "content_base64": base64.b64encode(
-                    content.encode("utf-8")
-                ).decode("ascii"),
-                "attachment_base64": base64.b64encode(
-                    attachment
-                ).decode("ascii"),
-                "attachment_ext": att_ext,
-            }
+            payload = self._build_send_payload(meta, content, attachment or b"", att_ext or "")
             data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
             req = urllib.request.Request(
                 f"{self._server}/api/send",
@@ -53,56 +52,61 @@ class CloudSyncClient:
                 method="POST",
             )
             with urllib.request.urlopen(req, timeout=10) as resp:
-                resp.read()
+                body = resp.read()
+            try:
+                result = json.loads(body.decode("utf-8"))
+                if not result.get("ok"):
+                    log_warning("云同步发送被服务端拒绝: %s", result.get("error"))
+                    return False
+            except (ValueError, json.JSONDecodeError):
+                # 老服务端可能不带 ok 字段，默认当成功
+                pass
             return True
         except Exception:
             log_exception("云同步发送失败")
             return False
 
-    def poll_letters(self, since_ts: str = "") -> tuple[list[dict], str]:
-        """向 {server}/api/poll?pair_code={code}&since={ts} GET。
+    def _build_send_payload(
+        self, meta: dict, content: str, attachment: bytes, att_ext: str
+    ) -> dict:
+        status = idm.get_status()
+        # 统一先对 meta 签名（无论 channel 还是 legacy 模式都签，方便将来完全去掉 legacy）
+        signed_meta = idm.sign_message(dict(meta), content, attachment, att_ext)
+        content_b64 = base64.b64encode(content.encode("utf-8")).decode("ascii")
+        attach_b64 = base64.b64encode(attachment or b"").decode("ascii")
+        payload = {
+            "meta": signed_meta,
+            "content_base64": content_b64,
+            "attachment_base64": attach_b64,
+            "attachment_ext": att_ext,
+        }
+        if status.paired and status.channel_id and self._server:
+            payload["channel_id"] = status.channel_id
+            log_info("send via channel_id=%s", status.channel_id)
+        else:
+            if not self._pair_code:
+                raise RuntimeError("未配对，且配置里没有 legacy pair_code 可用。请先在设置里完成配对向导。")
+            payload["pair_code"] = self._pair_code
+        return payload
 
-        返回 (letters, server_ts)。
-        letters 每项: {meta: dict, content: str, attachment: bytes, attachment_ext: str}
-        失败返回 ([], "")，不抛异常。
-        """
+    # ---------- 拉取 ----------
+
+    def poll_letters(self, since_ts: str = "") -> tuple[list[dict], str]:
+        """返回 (letters, server_ts)。失败返回 ([], "")。"""
         try:
-            params = urllib.parse.urlencode({
-                "pair_code": self._pair_code,
-                "since": since_ts,
-            })
-            url = f"{self._server}/api/poll?{params}"
+            url = self._build_poll_url(since_ts or "")
             req = urllib.request.Request(url, method="GET")
             with urllib.request.urlopen(req, timeout=10) as resp:
                 raw = resp.read()
             data = json.loads(raw.decode("utf-8"))
             server_ts = data.get("server_ts", "")
-            letters = []
+            letters: list[dict] = []
             for item in data.get("letters", []):
-                # 单封坏信独立 try/except：失败仅跳过该信，不阻塞整批、不回退游标
                 try:
-                    att_b64 = item.get("attachment_base64", "") or ""
-                    # 防御：base64 解码后字节数约为 len/4*3，超限直接丢弃该信件
-                    if len(att_b64) > MAX_ATTACHMENT_BYTES * 2:
-                        log_warning(
-                            "云中转信件附件过大（base64 %d 字节），已丢弃",
-                            len(att_b64),
-                        )
-                        att = b""
-                    else:
-                        att = base64.b64decode(att_b64)
-                    content = base64.b64decode(
-                        item.get("content_base64", "")
-                    ).decode("utf-8")
-                    meta = item.get("meta", {})
-                    if not isinstance(meta, dict):
-                        meta = {}
-                    letters.append({
-                        "meta": meta,
-                        "content": content,
-                        "attachment": att,
-                        "attachment_ext": item.get("attachment_ext", ""),
-                    })
+                    parsed = self._parse_one_inbound(item)
+                    if parsed is None:
+                        continue  # 被身份校验丢弃
+                    letters.append(parsed)
                 except Exception:
                     log_exception("云中转坏信件解析失败，已跳过")
                     continue
@@ -110,3 +114,57 @@ class CloudSyncClient:
         except Exception:
             log_exception("云同步轮询失败")
             return [], ""
+
+    def _build_poll_url(self, since_ts: str) -> str:
+        status = idm.get_status()
+        params: dict[str, str] = {"since": since_ts}
+        if status.paired and status.channel_id and self._server:
+            params["channel_id"] = status.channel_id
+            my_pk_bytes, sk = idm.ensure_identity()
+            pk_fp = idm._pk_fp(my_pk_bytes)  # type: ignore[attr-defined]
+            plain = f"poll_auth|{status.channel_id}|{pk_fp}|{since_ts}".encode("utf-8")
+            params["pk_fp"] = pk_fp
+            params["sig_b64"] = _b64e(sk.sign(plain))
+        else:
+            if not self._pair_code:
+                raise RuntimeError("未配对，且配置里没有 legacy pair_code 可用。请先在设置里完成配对向导。")
+            params["pair_code"] = self._pair_code
+        qs = urllib.parse.urlencode(params)
+        return f"{self._server}/api/poll?{qs}"
+
+    def _parse_one_inbound(self, item: dict) -> dict | None:
+        att_b64 = item.get("attachment_base64", "") or ""
+        if len(att_b64) > MAX_ATTACHMENT_BYTES * 2:
+            log_warning("云中转信件附件过大（base64 %d 字节），已丢弃", len(att_b64))
+            return None
+        try:
+            att = base64.b64decode(att_b64)
+        except Exception:
+            att = b""
+        try:
+            content = base64.b64decode(item.get("content_base64", "")).decode("utf-8")
+        except Exception:
+            content = ""
+        meta = item.get("meta", {})
+        if not isinstance(meta, dict):
+            meta = {}
+        att_ext = item.get("attachment_ext", "") or ""
+        # 身份校验：如果本地已经配对 partner_pk，必须验；否则可能是 legacy 自发自收+uuid 去重过滤
+        status = idm.get_status()
+        if status.paired:
+            # 自收信：pk_fp 是我自己的（配对模式下也会被 relay 收到）
+            my_pk_bytes, _sk = idm.ensure_identity()
+            my_fp = idm._pk_fp(my_pk_bytes)  # type: ignore[attr-defined]
+            if meta.get("pk_fp") == my_fp:
+                return None  # 自己发的，跳过
+            if not idm.verify_message(meta, content, att, att_ext):
+                log_warning("云中转收到的信件验签失败，丢弃。meta=%s", {
+                    k: v for k, v in meta.items() if k != "sig_b64"
+                })
+                return None
+        return {
+            "meta": meta,
+            "content": content,
+            "attachment": att,
+            "attachment_ext": att_ext,
+        }

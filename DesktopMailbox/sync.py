@@ -6,8 +6,13 @@
   content 字节（UTF-8 正文）
   attachment 字节（原始图片字节）
 
-传输明文（局域网内）；对方收到后用本地 Fernet key 重新加密落盘。
-发送方寄出后会同时本地存一份 + 异步发给对方。
+鉴权：
+  - 旧版：无鉴权，只靠知道 peer_ip
+  - 新版（若本机已完成配对向导）：meta 必须带 pk_fp + sig_b64，签名由 identity.sign_message 生成
+    接收端 hub.on_received 用 identity.verify_message 做强制校验，不通过直接丢弃连接 + 不 emit 任何信号，
+    解决公共 WiFi 下"任何人知道 IP 就能塞消息"的问题。
+
+发送方寄出后会同时本地存一份 + 异步发给对方（LAN 和/或 Cloud）。
 """
 from __future__ import annotations
 
@@ -22,7 +27,8 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Signal
 
 import app_paths
-from common_utils import MAX_ATTACHMENT_BYTES, log_exception, log_warning
+import identity as idm
+from common_utils import MAX_ATTACHMENT_BYTES, log_exception, log_info, log_warning
 
 from . import letter_store
 from .cloud_sync import CloudSyncClient
@@ -35,7 +41,7 @@ _MAX_CONTENT_BYTES = 1 * 1024 * 1024
 
 
 def _ensure_uuid(cfg_dir: Path) -> str:
-    """读取或生成本机 sender_id（UUID，用于云同步自收信去重）。"""
+    """读取或生成本机 sender_id（UUID，用于 legacy 模式下云同步自收信去重）。"""
     path = cfg_dir / "sender_id.txt"
     if path.exists():
         try:
@@ -173,8 +179,18 @@ class SyncHub(QObject):
         silent: bool = False,
     ) -> None:
         # 统一注入 sender_id（send_event 已注入，但 compose_window 直接调 send_async 需补）
-        if "sender_id" not in meta and isinstance(meta, dict):
+        if not isinstance(meta, dict):
+            meta = {}
+        if "sender_id" not in meta:
             meta["sender_id"] = self._my_id
+        # 新版身份：发送前给消息做 Ed25519 签名（未配对也生成签名：legacy 接收方忽略即可，未来迁移平滑）
+        att = attachment or b""
+        signed_meta = idm.sign_message(dict(meta), content, att, att_ext)
+        if signed_meta is meta:
+            # sign_message 内部出错兜底（理论不会），就用原 meta
+            pass
+        else:
+            meta = signed_meta
         mode = self._cfg.get("sync_mode", "lan")
         if mode in ("lan", "both"):
             host = self._cfg.get("peer_host", "").strip()
@@ -182,14 +198,14 @@ class SyncHub(QObject):
                 port = int(self._cfg.get("peer_port", DEFAULT_PORT))
                 t = threading.Thread(
                     target=self._send_blocking,
-                    args=(host, port, meta, content, attachment or b"", att_ext, silent),
+                    args=(host, port, meta, content, att, att_ext, silent),
                     daemon=True,
                 )
                 t.start()
         if mode in ("cloud", "both") and self._cloud_client is not None:
             t = threading.Thread(
                 target=self._cloud_send_blocking,
-                args=(meta, content, attachment or b"", att_ext, silent),
+                args=(meta, content, att, att_ext, silent),
                 daemon=True,
             )
             t.start()
@@ -318,17 +334,43 @@ class SyncHub(QObject):
     ) -> None:
         """被 handler 在 socket 线程调用：按 meta.type 路由。
 
-        - 无 type 或 type=="letter"：走原 letter 流程（letter_store + letter_received）
-        - 其他 type：emit event_received 信号，由 launcher 路由器分发到各模块
+        新版身份前置校验（优先级最高）：
+          1. 若我本地已配对（partner_pk 存在），对方消息必须带合法 Ed25519 签名 + 验签通过；
+             不通过直接丢弃。解决公共 WiFi 邻居连进来乱塞消息的问题。
+          2. 新版身份还顺带做一次"自收信去重"（pk_fp == 我自己的 pk_fp），所以 uuid self._my_id
+             去重仅在未配对时生效（legacy 兜底）。
+
+        路由：
+          - 无 type 或 type=="letter"：走原 letter 流程（letter_store + letter_received）
+          - 其他 type：emit event_received 信号，由 launcher 路由器分发到各模块
         """
         # 防御：meta 来自网络输入，非 dict 时直接丢弃，避免 .get() 抛 AttributeError
         if not isinstance(meta, dict):
             log_warning("收到非 dict 的 meta，已丢弃: %r", type(meta).__name__)
             return
-        # 云同步去重：pair_code 双方共用，自己刚发的信会被轮询回来，跳过
-        sender = meta.get("sender_id")
-        if sender and sender == self._my_id:
-            return
+
+        status = idm.get_status()
+        if status.paired:
+            # 1. 自收信（局域网也会自收吗？一般不会，不过统一按签名去重更稳）
+            my_pk_bytes, _ = idm.ensure_identity()
+            my_fp = idm._pk_fp(my_pk_bytes)  # type: ignore[attr-defined]
+            if meta.get("pk_fp") == my_fp:
+                return
+            # 2. 签名校验：必须是 partner 发的
+            if not idm.verify_message(meta, content, attachment or b"", att_ext or ""):
+                log_warning(
+                    "收到局域网消息但身份验签失败（可能是非对方的人连上了端口），已丢弃。"
+                    "meta=%s",
+                    {k: v for k, v in meta.items() if k != "sig_b64"},
+                )
+                return
+            log_info("局域网消息签名验证通过，type=%s", meta.get("type", "letter"))
+        else:
+            # 未配对：legacy 模式仍用 UUID sender_id 做自收信去重
+            sender = meta.get("sender_id")
+            if sender and sender == self._my_id:
+                return
+
         msg_type = meta.get("type", "letter")
         if msg_type != "letter":
             self.event_received.emit(msg_type, meta, content, attachment or b"", att_ext)
