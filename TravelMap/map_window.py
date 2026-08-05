@@ -57,8 +57,14 @@ def handle_partner_event(meta: dict, content: str, attachment: bytes,
     city = meta.get("city", "")
     if not city:
         return
-    lat = meta.get("lat", 0.0)
-    lng = meta.get("lng", 0.0)
+    # 防御：lat/lng 是网络输入，非数字会在 store 里 float() 抛 ValueError
+    try:
+        lat = float(meta.get("lat", 0.0) or 0)
+        lng = float(meta.get("lng", 0.0) or 0)
+    except (TypeError, ValueError):
+        log_warning("收到对方 map 事件的非法 lat/lng: %r, %r",
+                    meta.get("lat"), meta.get("lng"))
+        return
     note = meta.get("note", "")
     photo_filename = ""
     if attachment:

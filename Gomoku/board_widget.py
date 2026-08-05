@@ -96,6 +96,9 @@ class GomokuBoard(QWidget):
 
     def place_stone(self, row: int, col: int, color: int) -> None:
         """落子（本地或远端）：写入网格、切换回合、判定胜负。"""
+        # 最终防线：已有赢家就不再落子，避免迟到的落子二次触发胜负判定
+        if self._winner:
+            return
         if not (0 <= row < SIZE and 0 <= col < SIZE):
             return
         if self._grid[row][col] != 0:

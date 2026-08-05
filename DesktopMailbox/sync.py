@@ -21,6 +21,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
 
+import app_paths
 from common_utils import MAX_ATTACHMENT_BYTES, log_exception, log_warning
 
 from . import letter_store
@@ -31,6 +32,26 @@ DEFAULT_PORT = 52014
 # 防御性上限：header JSON 不应过大；正文（文本）也需有界
 _MAX_HEADER_BYTES = 64 * 1024
 _MAX_CONTENT_BYTES = 1 * 1024 * 1024
+
+
+def _ensure_uuid(cfg_dir: Path) -> str:
+    """读取或生成本机 sender_id（UUID，用于云同步自收信去重）。"""
+    path = cfg_dir / "sender_id.txt"
+    if path.exists():
+        try:
+            txt = path.read_text(encoding="utf-8").strip()
+            if txt:
+                return txt
+        except OSError:
+            pass
+    import uuid
+    uid = uuid.uuid4().hex[:16]
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(uid, encoding="utf-8")
+    except OSError:
+        pass
+    return uid
 
 
 def _recv_exact(sock: socket.socket, n: int) -> bytes:
@@ -58,8 +79,14 @@ class SyncHub(QObject):
         self._server: socketserver.ThreadingTCPServer | None = None
         self._thread: threading.Thread | None = None
         self._cloud_timer: threading.Timer | None = None
-        self._cloud_last_ts: str = ""
         self._heartbeat_timer: threading.Timer | None = None
+        # stop() 后阻止轮询/心跳重新调度，避免退出后残留网络请求
+        self._stopped = False
+        # 云同步：本机 sender_id 用于自收信去重；游标持久化避免重启重复投递
+        self._my_id: str = _ensure_uuid(app_paths.CONFIG_DIR)
+        self._cursor_path: Path = app_paths.DATA_DIR / "cloud_cursor.json"
+        self._cloud_last_ts: str = self._load_cursor()
+        self._cursor_lock = threading.Lock()
         mode = cfg.get("sync_mode", "lan")
         self._cloud_client: CloudSyncClient | None = None
         if mode in ("cloud", "both"):
@@ -97,7 +124,34 @@ class SyncHub(QObject):
             self._heartbeat_schedule()
         return started
 
+    # ---------- 云游标持久化 ----------
+
+    def _load_cursor(self) -> str:
+        """启动时加载上一次的游标，避免重启重复投递。"""
+        if not self._cursor_path.exists():
+            return ""
+        try:
+            data = json.loads(self._cursor_path.read_text(encoding="utf-8"))
+            ts = data.get("server_ts", "")
+            return ts if isinstance(ts, str) else ""
+        except (json.JSONDecodeError, OSError):
+            return ""
+
+    def _save_cursor(self) -> None:
+        """游标更新后落盘。多线程调用有锁。"""
+        try:
+            self._cursor_path.parent.mkdir(parents=True, exist_ok=True)
+            with self._cursor_lock:
+                self._cursor_path.write_text(
+                    json.dumps({"server_ts": self._cloud_last_ts},
+                               ensure_ascii=False),
+                    encoding="utf-8",
+                )
+        except OSError:
+            pass
+
     def stop(self) -> None:
+        self._stopped = True
         if self._heartbeat_timer is not None:
             self._heartbeat_timer.cancel()
             self._heartbeat_timer = None
@@ -118,6 +172,9 @@ class SyncHub(QObject):
         att_ext: str,
         silent: bool = False,
     ) -> None:
+        # 统一注入 sender_id（send_event 已注入，但 compose_window 直接调 send_async 需补）
+        if "sender_id" not in meta and isinstance(meta, dict):
+            meta["sender_id"] = self._my_id
         mode = self._cfg.get("sync_mode", "lan")
         if mode in ("lan", "both"):
             host = self._cfg.get("peer_host", "").strip()
@@ -147,9 +204,14 @@ class SyncHub(QObject):
     ) -> None:
         """通用事件发送：自动构造 meta={type, **payload, sent_at} 复用 send_async。
 
+        注入 sender_id（本机 UUID），云同步自收信时可去重（不把自己发出的信再次落盘）。
         silent=True 时不 emit send_result（心跳等后台事件失败不应弹通知）。
         """
-        meta = {"type": event_type, "sent_at": datetime.now().isoformat(timespec="seconds")}
+        meta = {
+            "type": event_type,
+            "sent_at": datetime.now().isoformat(timespec="seconds"),
+            "sender_id": self._my_id,
+        }
         meta.update(payload)
         self.send_async(meta, "", attachment, att_ext, silent=silent)
 
@@ -209,19 +271,26 @@ class SyncHub(QObject):
         self._cloud_timer.start()
 
     def _cloud_poll_loop(self) -> None:
-        if self._cloud_client is None:
+        if self._stopped or self._cloud_client is None:
             return
-        letters, server_ts = self._cloud_client.poll_letters(self._cloud_last_ts)
-        if server_ts:
-            self._cloud_last_ts = server_ts
-        for letter in letters:
-            self.on_received(
-                letter.get("meta", {}),
-                letter.get("content", ""),
-                letter.get("attachment", b""),
-                letter.get("attachment_ext", ""),
-            )
-        self._cloud_schedule_poll()
+        try:
+            letters, server_ts = self._cloud_client.poll_letters(self._cloud_last_ts)
+            if server_ts:
+                self._cloud_last_ts = server_ts
+                self._save_cursor()
+            for letter in letters:
+                self.on_received(
+                    letter.get("meta", {}),
+                    letter.get("content", ""),
+                    letter.get("attachment", b""),
+                    letter.get("attachment_ext", ""),
+                )
+        except Exception:
+            log_exception("云轮询异常")
+        finally:
+            # 即使处理某封信时出错，也要继续调度下一次，避免云同步永久停止
+            if not self._stopped:
+                self._cloud_schedule_poll()
 
     # ---------- 心跳广播 ----------
 
@@ -232,6 +301,8 @@ class SyncHub(QObject):
         self._heartbeat_timer.start()
 
     def _heartbeat_loop(self) -> None:
+        if self._stopped:
+            return
         # 发送心跳事件（不带附件、无正文）；静默发送，失败不弹通知
         self.send_event("ping", {"kind": "heartbeat"}, silent=True)
         self._heartbeat_schedule()
@@ -250,6 +321,14 @@ class SyncHub(QObject):
         - 无 type 或 type=="letter"：走原 letter 流程（letter_store + letter_received）
         - 其他 type：emit event_received 信号，由 launcher 路由器分发到各模块
         """
+        # 防御：meta 来自网络输入，非 dict 时直接丢弃，避免 .get() 抛 AttributeError
+        if not isinstance(meta, dict):
+            log_warning("收到非 dict 的 meta，已丢弃: %r", type(meta).__name__)
+            return
+        # 云同步去重：pair_code 双方共用，自己刚发的信会被轮询回来，跳过
+        sender = meta.get("sender_id")
+        if sender and sender == self._my_id:
+            return
         msg_type = meta.get("type", "letter")
         if msg_type != "letter":
             self.event_received.emit(msg_type, meta, content, attachment or b"", att_ext)

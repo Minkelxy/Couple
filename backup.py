@@ -1,5 +1,6 @@
 """数据备份与恢复：打包 AppData 数据为 zip，支持从 zip 恢复。"""
 from __future__ import annotations
+import os
 import zipfile
 import shutil
 from datetime import datetime
@@ -37,8 +38,23 @@ def _add_dir_to_zip(zf: zipfile.ZipFile, src_dir: Path, arcname_prefix: str):
             arcname = f"{arcname_prefix}/{file.relative_to(src_dir).as_posix()}"
             zf.write(file, arcname)
 
+def _safe_extract_all(zf: zipfile.ZipFile, dest: Path) -> None:
+    """安全解压：逐条校验路径，防止 ZipSlip 路径穿越（../../etc/passwd）。"""
+    dest_resolved = dest.resolve()
+    for member in zf.infolist():
+        target = (dest / member.filename).resolve()
+        if not (str(target).startswith(str(dest_resolved) + os.sep)
+                or target == dest_resolved):
+            raise ValueError(f"zip 条目含非法路径，拒绝解压: {member.filename}")
+        # 3.12+ 的 extractall filter 更安全，但我们自己逐条校验兼容性更好
+        zf.extract(member, dest)
+
+
 def restore_backup(zip_path: Path) -> None:
-    """从 zip 恢复数据，覆盖当前 AppData 数据。
+    """从 zip 恢复数据，覆盖当前 AppData 数据（与"恢复将覆盖所有数据"提示一致）。
+
+    - 先安全解压到临时目录（防 ZipSlip）
+    - 目录整体覆盖而非合并（原 _overwrite_dir 合并导致旧信件/配置残留）
     调用方应在调用前弹确认框。
     """
     with zipfile.ZipFile(zip_path, "r") as zf:
@@ -47,8 +63,8 @@ def restore_backup(zip_path: Path) -> None:
         if tmp.exists():
             shutil.rmtree(tmp)
         tmp.mkdir(parents=True, exist_ok=True)
-        zf.extractall(tmp)
-        
+        _safe_extract_all(zf, tmp)
+
         # 覆盖 config
         src_config = tmp / "config"
         if src_config.exists():
@@ -61,18 +77,18 @@ def restore_backup(zip_path: Path) -> None:
         src_images = tmp / "images"
         if src_images.exists():
             _overwrite_dir(src_images, app_paths.IMAGES_DIR)
-        
+
         # 清理临时目录
         shutil.rmtree(tmp)
 
-def _overwrite_dir(src: Path, dst: Path):
-    """用 src 覆盖 dst：删除 dst 旧内容，把 src 复制过去。"""
-    dst.mkdir(parents=True, exist_ok=True)
-    for item in src.iterdir():
-        target = dst / item.name
-        if item.is_dir():
-            if target.exists():
-                shutil.rmtree(target)
-            shutil.copytree(item, target)
-        else:
-            shutil.copy2(item, target)
+
+def _overwrite_dir(src: Path, dst: Path) -> None:
+    """用 src 覆盖 dst：整体替换（删除 dst 再 copytree）。
+
+    原实现只把 src 的条目拷过去，不删 dst 中 src 没有的文件——
+    与用户确认框提示"恢复将覆盖当前所有数据"不一致，会遗留备份后新增的信件/配置。
+    """
+    if dst.exists():
+        shutil.rmtree(dst)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src, dst)
