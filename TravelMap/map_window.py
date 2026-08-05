@@ -326,6 +326,10 @@ class TravelMapWindow(QMainWindow):
         self._build_ui()
         self._refresh()
 
+    def set_hub(self, hub) -> None:
+        """设置变更时热更新同步引用（避免使用已停止的旧 hub）。"""
+        self._hub = hub
+
     def _build_ui(self) -> None:
         central = QWidget(self)
         self.setCentralWidget(central)
@@ -390,6 +394,9 @@ class TravelMapWindow(QMainWindow):
         self.map_widget.set_cities(cities)
         if route:
             self.map_widget.highlight_route(route)
+        else:
+            # 显式传空，清除旧的路线高亮（避免用户切到「不画路线」状态时旧路线残留）
+            self.map_widget.highlight_route([])
 
         self.city_list.clear()
         for c in cities:

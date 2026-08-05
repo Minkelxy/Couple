@@ -34,12 +34,9 @@ class ReadLetterWindow(QMainWindow):
             (it for it in letter_store.list_letters() if it["id"] == letter_id),
             None,
         )
-        if meta is None:
-            self.close()
-            return
-        self._meta = meta
+        self._meta = meta  # 始终初始化，meta 不存在则为 None，保证后续方法不 AttributeError
 
-        self.setWindowTitle(f"一封信 ✉ · {meta['title']}")
+        self.setWindowTitle("一封信 ✉" if meta is None else f"一封信 ✉ · {meta['title']}")
         self.resize(640, 720)
 
         # 滚动容器，长信/大图也能看
@@ -52,6 +49,23 @@ class ReadLetterWindow(QMainWindow):
         layout = QVBoxLayout(inner)
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(10)
+
+        # meta 不存在：最小 UI 提示，避免残破窗口后访问 self._meta 抛 AttributeError
+        if meta is None:
+            tip = QLabel("这封信不存在（可能已删除）。", self)
+            tip.setStyleSheet("font-size:16px; color:#888; padding:40px 0;")
+            tip.setAlignment(Qt.AlignCenter)
+            layout.addWidget(tip)
+            layout.addStretch(1)
+            close_btn = QPushButton("关闭", self)
+            close_btn.setStyleSheet(
+                "QPushButton{background:#e65a7a;color:#fff;border:none;"
+                "border-radius:8px;padding:10px;font-size:14px;}"
+                "QPushButton:hover{background:#d94a6a;}"
+            )
+            close_btn.clicked.connect(self.close)
+            layout.addWidget(close_btn)
+            return
 
         # 信头
         title_lbl = QLabel(meta["title"], self)
@@ -88,7 +102,7 @@ class ReadLetterWindow(QMainWindow):
                 size_err = check_attachment_size(att)
                 if size_err is not None:
                     log_warning("附件过大，拒绝显示: %s", size_err)
-                    layout.addWidget(QLabel(f"(附件过大，无法显示)", self))
+                    layout.addWidget(QLabel("(附件过大，无法显示)", self))
                 else:
                     try:
                         with Image.open(BytesIO(att)) as pil:
@@ -141,5 +155,7 @@ class ReadLetterWindow(QMainWindow):
 
     def _on_reply(self) -> None:
         m = self._meta
+        if m is None:
+            return
         # 回信：寄信人=原收件人，收信人=原寄信人，标题 Re: 原标题
         self.reply_requested.emit(m["recipient"], m["author"], f"Re: {m['title']}")

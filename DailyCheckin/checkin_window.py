@@ -235,6 +235,10 @@ class CheckinWindow(QMainWindow):
         self._refresh_chart()
         self.refresh_partner_sidebar()
 
+    def set_hub(self, hub) -> None:
+        """设置变更时热更新同步引用（避免使用已停止的旧 hub）。"""
+        self._hub = hub
+
     def _build_ui(self) -> None:
         central = QWidget(self)
         self.setCentralWidget(central)
