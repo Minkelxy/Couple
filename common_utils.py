@@ -14,10 +14,21 @@ from typing import Optional
 _logger: logging.Logger | None = None
 
 
+def _log_file_namer(default_name: str) -> str:
+    """TimedRotatingFileHandler 默认轮转名为 CoupleSuite.log.2026-08-05，
+    重命名为 CoupleSuite-2026-08-05.log 更直观。
+    """
+    if ".log." in default_name:
+        base, _, date = default_name.rpartition(".log.")
+        return f"{base}-{date}.log"
+    return default_name
+
+
 def get_logger() -> logging.Logger:
     """返回应用级 logger，首次调用时配置。
 
-    - 输出到 stderr（控制台/打包后 stdout 也能看到）
+    - stderr 控制台输出（打包后仍可见）
+    - 文件输出：%APPDATA%/CoupleSuite/logs/CoupleSuite.log，按天滚动、保留 7 天
     - 级别 INFO，可被环境变量 COUPLE_LOG_LEVEL 覆盖
     """
     global _logger
@@ -28,13 +39,34 @@ def get_logger() -> logging.Logger:
 
     logger = logging.getLogger("CoupleSuite")
     if not logger.handlers:
-        handler = logging.StreamHandler(sys.stderr)
         fmt = logging.Formatter(
             "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
             datefmt="%H:%M:%S",
         )
-        handler.setFormatter(fmt)
-        logger.addHandler(handler)
+        # stderr 控制台
+        sh = logging.StreamHandler(sys.stderr)
+        sh.setFormatter(fmt)
+        logger.addHandler(sh)
+        # 文件日志：按天滚动，保留 7 天
+        try:
+            from logging.handlers import TimedRotatingFileHandler
+            log_dir = Path(
+                os.environ.get("APPDATA", str(Path.home()))
+            ) / "CoupleSuite" / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            fh = TimedRotatingFileHandler(
+                log_dir / "CoupleSuite.log",
+                when="midnight",
+                backupCount=7,
+                encoding="utf-8",
+            )
+            fh.setFormatter(fmt)
+            fh.suffix = "%Y-%m-%d"
+            fh.namer = _log_file_namer
+            logger.addHandler(fh)
+        except Exception:
+            # 日志目录不可写时不影响程序运行，stderr 仍可用
+            pass
     level_name = os.environ.get("COUPLE_LOG_LEVEL", "INFO").upper()
     logger.setLevel(getattr(logging, level_name, logging.INFO))
     logger.propagate = False

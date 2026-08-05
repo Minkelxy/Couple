@@ -41,6 +41,7 @@ from PySide6.QtWidgets import (
 
 from . import store
 from .board_widget import GomokuBoard
+from common_utils import log_info, log_warning
 
 # 模块级引用：当前 GameWindow 实例 + hub 引用（供懒创建使用）
 _active_window: weakref.ref | None = None
@@ -279,6 +280,7 @@ class GameWindow(QMainWindow):
         self._board.clear_board()
         self._board.set_locked(True)
         self._status("已发送邀请，等待对方接受…")
+        log_info("gomoku SENT invite %s", invite_id)
         self._hub.send_event("gomoku_ctrl", {
             "kind": "invite",
             "invite_id": invite_id,
@@ -291,12 +293,14 @@ class GameWindow(QMainWindow):
             if self._pending_invite_id != invite_id:
                 return
             self._pending_invite_id = None
+        log_info("gomoku invite %s timeout 30s", invite_id)
         self._status("邀请超时（对方未回应）")
         self._board.set_locked(False)
         self._i_start_first = True
 
     def _handle_invite(self, invite_id: str) -> None:
         """对方发来了 invite。需要在 GUI 线程弹框。"""
+        log_info("gomoku RECV invite %s", invite_id)
         # 同一条邀请去重
         with self._invite_guard:
             if self._pending_invite_from_partner == invite_id:
@@ -305,6 +309,7 @@ class GameWindow(QMainWindow):
         # 已在对战中 → 直接拒绝（忙）
         if self._session_id is not None and not self._game_over:
             if self._hub:
+                log_warning("gomoku invite %s rejected (busy, in session %s)", invite_id, self._session_id)
                 self._hub.send_event("gomoku_ctrl", {
                     "kind": "invite_reject",
                     "invite_id": invite_id,
@@ -324,7 +329,9 @@ class GameWindow(QMainWindow):
             self._board.clear_board()
             self._sync_lock()
             self._status("你接受了邀请，你执黑先手！")
+            log_info("gomoku session created %s (invitee=我先下)", session_id)
             if self._hub:
+                log_info("gomoku SENT invite_accept %s session=%s", invite_id, session_id)
                 self._hub.send_event("gomoku_ctrl", {
                     "kind": "invite_accept",
                     "invite_id": invite_id,
@@ -334,6 +341,7 @@ class GameWindow(QMainWindow):
                 self._pending_invite_from_partner = None
         else:
             if self._hub:
+                log_info("gomoku SENT invite_reject %s", invite_id)
                 self._hub.send_event("gomoku_ctrl", {
                     "kind": "invite_reject",
                     "invite_id": invite_id,
@@ -348,6 +356,7 @@ class GameWindow(QMainWindow):
     def _on_stone_placed(self, row: int, col: int, color: int) -> None:
         if self._hub and self._session_id:
             # 发送方永远填自己颜色 black（接收端会统一放 white）
+            log_info("gomoku LOCAL move (%d,%d) black session=%s", row, col, self._session_id)
             self._hub.send_event("gomoku_move", {
                 "row": row, "col": col, "color": "black",
                 "session_id": self._session_id,
@@ -369,19 +378,27 @@ class GameWindow(QMainWindow):
         # session 校验：忽略不在当前会话的迟到/重放 move
         sid = meta.get("session_id")
         if self._session_id is None or (sid and sid != self._session_id):
+            log_warning("gomoku move IGNORED session mismatch recv=%s current=%s",
+                        sid, self._session_id)
             return
         # 回合校验：对方（white）只有在 current_color==2 时才允许落，
         #           防止重传 / 对方伪造多步连下
         if self._board.current_color() != 2:
+            log_warning("gomoku move IGNORED turn mismatch current_color=%d",
+                        self._board.current_color())
             return
         try:
             row = int(meta.get("row", -1))
             col = int(meta.get("col", -1))
         except (TypeError, ValueError):
+            log_warning("gomoku move IGNORED invalid coords row=%s col=%s",
+                        meta.get("row"), meta.get("col"))
             return
         if row < 0 or col < 0:
+            log_warning("gomoku move IGNORED negative coords row=%d col=%d", row, col)
             return
         # 对方颜色按 white 放置
+        log_info("gomoku RECV move (%d,%d) session=%s", row, col, self._session_id)
         self._board.place_stone(row, col, 2)
         if not self._game_over:
             self._status("轮到你落子（黑棋）")
@@ -407,6 +424,8 @@ class GameWindow(QMainWindow):
                     return
                 self._pending_invite_id = None
             self._session_id = str(meta.get("session_id") or _new_id("ses-"))
+            log_info("gomoku RECV invite_accept %s session=%s",
+                     meta.get("invite_id"), self._session_id)
             # 我是邀请发起方：对方接受 → 对方先下，本地锁
             self._i_start_first = False
             self._game_over = False
@@ -421,6 +440,8 @@ class GameWindow(QMainWindow):
                         meta.get("invite_id") != self._pending_invite_id:
                     return
                 self._pending_invite_id = None
+            log_info("gomoku RECV invite_reject %s reason=%s",
+                     meta.get("invite_id"), meta.get("reason", ""))
             reason = str(meta.get("reason", "") or "")
             msg = "对方在对局中，稍后再试" if reason == "busy" else "对方拒绝了邀请"
             self._status(msg)
@@ -440,16 +461,21 @@ class GameWindow(QMainWindow):
         # ---- 以下控制消息都要求会话匹配 ----
         sid = meta.get("session_id")
         if self._session_id is None or (sid and sid != self._session_id):
+            log_warning("gomoku ctrl IGNORED session mismatch kind=%s recv=%s current=%s",
+                        kind, sid, self._session_id)
             return
 
         if kind == "undo_request":
+            log_info("gomoku RECV undo_request session=%s", self._session_id)
             self._handle_undo_request()
         elif kind == "undo_approve":
             # 并发竞态：双方同时发 undo_request 时，对方先同意了我的请求
             # 我这边随后才在 _handle_undo_request 里 undo_last(2) 并标记
             # _local_undo_applied=True。对方又回我的 undo_approve 会导致再
             # 撤 2 手。加守卫避免。
-            if self._i_requested_undo and not self._local_undo_applied:
+            applied = self._i_requested_undo and not self._local_undo_applied
+            log_info("gomoku undo_approve received, undo_last(2) applied=%s", applied)
+            if applied:
                 self._board.undo_last(2)
             self._local_undo_applied = False
             self._game_over = False
@@ -459,6 +485,7 @@ class GameWindow(QMainWindow):
             self._status("对方同意悔棋，等待对方落子")
             self._sync_lock()
         elif kind == "undo_reject":
+            log_info("gomoku RECV undo_reject session=%s", self._session_id)
             self._local_undo_applied = False
             self._i_requested_undo = False
             self._sync_lock()
@@ -469,6 +496,8 @@ class GameWindow(QMainWindow):
             QMessageBox.information(self, "悔棋", "对方拒绝悔棋")
         elif kind == "restart":
             next_sid = str(meta.get("next_session_id") or _new_id("ses-"))
+            old_sid = self._session_id
+            log_info("gomoku RECV restart session switched %s -> %s", old_sid, next_sid)
             # 并发竞态：双方同时点重开时，各自都会在 _on_restart 解锁，
             # 之后各自收到对方的 restart 又锁定 → 两边都锁死。
             # 用 _i_requested_restart 守卫，避免二次锁。
@@ -501,6 +530,7 @@ class GameWindow(QMainWindow):
         btn = QMessageBox.question(self, "悔棋请求", "对方想悔棋，同意吗？")
         if btn == QMessageBox.Yes:
             if self._hub and self._session_id:
+                log_info("gomoku SENT undo_approve session=%s", self._session_id)
                 self._hub.send_event("gomoku_ctrl", {
                     "kind": "undo_approve",
                     "session_id": self._session_id,
@@ -513,6 +543,7 @@ class GameWindow(QMainWindow):
             self._status("你同意了悔棋，等待对方落子")
         else:
             if self._hub and self._session_id:
+                log_info("gomoku SENT undo_reject session=%s", self._session_id)
                 self._hub.send_event("gomoku_ctrl", {
                     "kind": "undo_reject",
                     "session_id": self._session_id,
@@ -539,6 +570,7 @@ class GameWindow(QMainWindow):
         if self._i_requested_undo:
             return
         self._i_requested_undo = True
+        log_info("gomoku SENT undo_request session=%s", self._session_id)
         self._hub.send_event("gomoku_ctrl", {
             "kind": "undo_request",
             "session_id": self._session_id,
@@ -553,6 +585,7 @@ class GameWindow(QMainWindow):
         self._local_undo_applied = False
         if self._hub:
             next_sid = _new_id("ses-")
+            log_info("gomoku RESTART requested locally next_session=%s", next_sid)
             self._i_requested_restart = True
             self._restart_proposed_next_session = next_sid
             self._hub.send_event("gomoku_ctrl", {
