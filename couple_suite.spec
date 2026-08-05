@@ -32,6 +32,12 @@ a = Analysis(
         'PIL._tkinter_finder',
         # cryptography
         'cryptography.fernet',
+        'cryptography.hazmat.primitives.asymmetric.ed25519',
+        'cryptography.hazmat.primitives.serialization',
+        'cryptography.hazmat.primitives.hashes',
+        # 公钥身份 & 配对（顶层脚本）
+        'identity',
+        'pairing',
         # matplotlib（心情曲线/雷达图）
         'matplotlib',
         'matplotlib.backends.backend_qtagg',
