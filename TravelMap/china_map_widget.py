@@ -193,9 +193,17 @@ class ChinaMapWidget(QWidget):
     def _draw_route(self, p: QPainter) -> None:
         if len(self._route) < 2:
             return
-        pts = [self._lnglat_to_screen(float(c.get("lng", 0)),
-                                       float(c.get("lat", 0)))
-               for c in self._route]
+        # 与 _draw_cities 保持一致：lat/lng 非数值时跳过该点，避免 paintEvent 崩溃
+        pts = []
+        for c in self._route:
+            try:
+                lng = float(c.get("lng", 0))
+                lat = float(c.get("lat", 0))
+            except (TypeError, ValueError):
+                continue
+            pts.append(self._lnglat_to_screen(lng, lat))
+        if len(pts) < 2:
+            return
         pen = QPen(_ROUTE_COLOR, 2.5)
         pen.setStyle(Qt.PenStyle.DashLine)
         pen.setDashPattern([8, 6])

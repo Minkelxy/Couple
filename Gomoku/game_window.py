@@ -139,6 +139,12 @@ class GameWindow(QMainWindow):
         self._my_color = "black"   # 本地始终为黑
         self._game_over = False
         self._i_requested_undo = False
+        # 并发竞态：双方同时点悔棋时，自己先同意了对方的 undo_request
+        # （已在本地 undo_last(2)），随后对方对自己早先发出的 undo_request
+        # 回复 undo_approve 到达，导致再次 undo_last(2) 共撤 4 手。
+        # 用 _local_undo_applied 标志标记本地已执行过撤销。
+        self._local_undo_applied = False
+        self._i_requested_restart = False
         self._suppress_open = False
 
         self.setWindowTitle("联机五子棋 ♟")
@@ -225,6 +231,10 @@ class GameWindow(QMainWindow):
                         att_ext: str) -> None:
         if meta.get("type") != "gomoku_move":
             return
+        # 防御：游戏结束后收到迟到的落子（网络抖动、重传、对方未同步致胜结果）
+        # 继续落子会重复触发 game_over 并写入第二条对局记录，直接丢弃
+        if self._game_over:
+            return
         try:
             row = int(meta.get("row", -1))
             col = int(meta.get("col", -1))
@@ -253,23 +263,40 @@ class GameWindow(QMainWindow):
         elif kind == "undo_request":
             self._handle_undo_request()
         elif kind == "undo_approve":
-            self._board.undo_last(2)
+            # 并发竞态：双方同时发 undo_request 时，对方可能先同意了我的请求
+            # （我这边随后才回复），此时我已经在 _handle_undo_request 里
+            # undo_last(2) 并标记 _local_undo_applied=True。
+            # 若对方也给我回复 undo_approve，再次 undo 会多撤 2 手。
+            # 故只有本方确实发过 undo_request 且尚未在本地执行撤销时才撤销。
+            if self._i_requested_undo and not self._local_undo_applied:
+                self._board.undo_last(2)
+            self._local_undo_applied = False
             self._game_over = False
             self._i_requested_undo = False
             self._board.set_locked(False)
             self._status("对方同意悔棋，轮到你落子")
         elif kind == "undo_reject":
+            self._local_undo_applied = False
             self._i_requested_undo = False
             self._sync_lock()
             self._status("对方拒绝悔棋，轮到你落子")
             QMessageBox.information(self, "悔棋", "对方拒绝悔棋")
         elif kind == "restart":
-            self._board.clear_board()
-            self._game_over = False
-            self._i_requested_undo = False
-            # 对方发起重开，等待对方先手
-            self._board.set_locked(True)
-            self._status("对方发起重新开局，等待对方先手")
+            # 并发竞态：双方同时点重开时，双方都会在 _on_restart 解锁，
+            # 之后各自收到对方的 restart 事件又锁定 → 两方都锁死。
+            # 用 _i_requested_restart 守卫：若自己刚发起过重开，收到对方
+            # restart 时不重复锁定（按「本地先手=解锁」保持一致）。
+            if self._i_requested_restart:
+                self._i_requested_restart = False
+                self._board.set_locked(False)
+                self._status("双方同时重新开局，你先手（黑棋）")
+            else:
+                self._board.clear_board()
+                self._game_over = False
+                self._i_requested_undo = False
+                # 对方发起重开，等待对方先手
+                self._board.set_locked(True)
+                self._status("对方发起重新开局，等待对方先手")
 
     def _handle_undo_request(self) -> None:
         """响应对方的悔棋请求。"""
@@ -278,6 +305,9 @@ class GameWindow(QMainWindow):
             if self._hub:
                 self._hub.send_event("gomoku_ctrl", {"kind": "undo_approve"}, silent=True)
             self._board.undo_last(2)
+            # 标记：我已在本地执行过撤销。如果对方随后也同意了我方早先发出的
+            # undo_request，收到 undo_approve 时不再重复撤销（防撤 4 手）。
+            self._local_undo_applied = True
             self._game_over = False
             # 同意后等待对方落子（对方先手）
             self._board.set_locked(True)
@@ -309,7 +339,10 @@ class GameWindow(QMainWindow):
         self._board.clear_board()
         self._game_over = False
         self._i_requested_undo = False
+        self._local_undo_applied = False
         if self._hub:
+            # 标记：自己发起了重开。收到对方 restart 时若也带该标记不重复锁定（防同时重开死锁）
+            self._i_requested_restart = True
             self._hub.send_event("gomoku_ctrl", {"kind": "restart"}, silent=True)
             self._status("已重新开局，你先手（黑棋）")
         else:

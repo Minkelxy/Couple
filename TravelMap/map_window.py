@@ -57,8 +57,14 @@ def handle_partner_event(meta: dict, content: str, attachment: bytes,
     city = meta.get("city", "")
     if not city:
         return
-    lat = meta.get("lat", 0.0)
-    lng = meta.get("lng", 0.0)
+    # 防御：lat/lng 是网络输入，非数字会在 store 里 float() 抛 ValueError
+    try:
+        lat = float(meta.get("lat", 0.0) or 0)
+        lng = float(meta.get("lng", 0.0) or 0)
+    except (TypeError, ValueError):
+        log_warning("收到对方 map 事件的非法 lat/lng: %r, %r",
+                    meta.get("lat"), meta.get("lng"))
+        return
     note = meta.get("note", "")
     photo_filename = ""
     if attachment:
@@ -320,6 +326,10 @@ class TravelMapWindow(QMainWindow):
         self._build_ui()
         self._refresh()
 
+    def set_hub(self, hub) -> None:
+        """设置变更时热更新同步引用（避免使用已停止的旧 hub）。"""
+        self._hub = hub
+
     def _build_ui(self) -> None:
         central = QWidget(self)
         self.setCentralWidget(central)
@@ -384,6 +394,9 @@ class TravelMapWindow(QMainWindow):
         self.map_widget.set_cities(cities)
         if route:
             self.map_widget.highlight_route(route)
+        else:
+            # 显式传空，清除旧的路线高亮（避免用户切到「不画路线」状态时旧路线残留）
+            self.map_widget.highlight_route([])
 
         self.city_list.clear()
         for c in cities:

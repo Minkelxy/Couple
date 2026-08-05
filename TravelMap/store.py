@@ -84,11 +84,20 @@ def add_partner_city(city: str, lat: float, lng: float,
 
     与 add() 区别：不清理同名旧记录，type 默认 visited，date 留空。
     """
+    # 最终防御：float() 失败则回退 0.0，避免写入时崩溃
+    try:
+        lat_f = float(lat)
+    except (TypeError, ValueError):
+        lat_f = 0.0
+    try:
+        lng_f = float(lng)
+    except (TypeError, ValueError):
+        lng_f = 0.0
     items = _load()
     record = {
         "city_name": city,
-        "lat": float(lat),
-        "lng": float(lng),
+        "lat": lat_f,
+        "lng": lng_f,
         "type": "visited",
         "date": "",
         "story": note,
@@ -100,24 +109,38 @@ def add_partner_city(city: str, lat: float, lng: float,
     return record
 
 
-def update(city_name: str, **kwargs) -> None:
-    """按 city_name 更新字段。"""
+def update(city_name: str, source: str | None = "self", **kwargs) -> None:
+    """按 city_name 更新字段，默认只改自己的记录（与 add/delete 设计一致）。
+
+    传 source=None 时按旧行为只改命中的第一条（不推荐，会混淆 self/partner）。
+    """
     if "type" in kwargs and kwargs["type"] not in _VALID_TYPES:
         raise ValueError(f"无效的 type: {kwargs['type']}")
     if "source" in kwargs and kwargs["source"] not in _VALID_SOURCES:
         raise ValueError(f"无效的 source: {kwargs['source']}")
     items = _load()
     for it in items:
-        if it.get("city_name") == city_name:
-            it.update(kwargs)
-            break
+        if it.get("city_name") != city_name:
+            continue
+        # source 过滤：只更新匹配的记录，避免覆盖对方的同名城市
+        if source is not None and it.get("source") != source:
+            continue
+        it.update(kwargs)
+        break
     _save(items)
 
 
-def delete(city_name: str) -> None:
-    """按 city_name 删除记录。"""
+def delete(city_name: str, source: str | None = "self") -> None:
+    """按 city_name 删除记录，默认只删自己的记录（保留对方的同名城市）。
+
+    传 source=None 时按旧行为删所有同名记录。
+    """
     items = _load()
-    items = [it for it in items if it.get("city_name") != city_name]
+    if source is None:
+        items = [it for it in items if it.get("city_name") != city_name]
+    else:
+        items = [it for it in items
+                 if not (it.get("city_name") == city_name and it.get("source") == source)]
     _save(items)
 
 

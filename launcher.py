@@ -110,6 +110,7 @@ def main() -> int:
     movies_win: BoardWindow | None = None
     travel_win: TravelMapWindow | None = None
     gallery_win: GalleryGridWindow | None = None
+    gomoku_win = None  # Gomoku 强引用：防止GC后对方事件重新新建空棋盘
 
     # 对方最后一次心跳时间戳（用于在线状态判断）
     hub_holder["last_heartbeat"] = 0.0
@@ -227,17 +228,51 @@ def main() -> int:
         # 重载相框
         pf_window.reload(pf_config.load())
         # 重启同步服务
-        hub_holder["hub"].stop()
+        old_hub = hub_holder["hub"]
+        try:
+            old_hub.stop()
+        except Exception:
+            pass
         hub_holder["hub"] = SyncHub(mb_config.load())
         hub_holder["hub"].start()
-        set_gomoku_hub(hub_holder["hub"])
+        new_hub = hub_holder["hub"]
+        set_gomoku_hub(new_hub)
         hub_holder["hub"].send_result.connect(
             lambda ok, msg: tray.show_toast("同步", msg)
         )
         hub_holder["hub"].letter_received.connect(on_sync_received)
         hub_holder["hub"].event_received.connect(on_event_received)
-        # 更新 compose 窗口的 sync 引用（如果已创建）
-        # ComposeWindow 持有旧 hub 引用，但下次创建新窗口时会用新 hub
+        # 更新已创建窗口的 hub 引用：这些窗口仍持有旧（已停止）hub，否则同步发送会静默失败
+        if compose_win is not None:
+            try:
+                compose_win.set_sync_hub(new_hub)
+            except (AttributeError, RuntimeError):
+                pass
+        if checkin_win is not None:
+            try:
+                checkin_win.set_hub(new_hub)
+            except (AttributeError, RuntimeError):
+                pass
+        if movies_win is not None:
+            try:
+                movies_win.set_hub(new_hub)
+            except (AttributeError, RuntimeError):
+                pass
+        if travel_win is not None:
+            try:
+                travel_win.set_hub(new_hub)
+            except (AttributeError, RuntimeError):
+                pass
+        if gallery_win is not None:
+            try:
+                gallery_win.set_hub(new_hub)
+            except (AttributeError, RuntimeError):
+                pass
+        if gomoku_win is not None:
+            try:
+                gomoku_win._hub = new_hub
+            except (AttributeError, RuntimeError):
+                pass
         # 刷新托盘相册菜单
         tray.refresh_albums()
         tray.show_toast("设置", "已生效")
@@ -246,8 +281,8 @@ def main() -> int:
         nonlocal stats_win
         if stats_win is None:
             stats_win = StatsWindow()
-        # 每次打开刷新数据
-        stats_win.__init__()
+        # 每次打开刷新数据（避免手动调 __init__ 重构 QMainWindow）
+        stats_win.refresh()
         stats_win.show()
         stats_win.raise_()
         stats_win.activateWindow()
@@ -323,7 +358,27 @@ def main() -> int:
         travel_win.activateWindow()
 
     def open_gomoku() -> None:
-        open_gomoku_window(hub_holder["hub"])
+        nonlocal gomoku_win
+        # Gomoku 模块内部用 weakref 复用，这里保留 launcher 级强引用避免 GC
+        if gomoku_win is None or getattr(gomoku_win, "_destroyed", True):
+            # 通过 Gomoku 模块的复用 API 创建窗口，保持双方行为一致
+            open_gomoku_window(hub_holder["hub"])
+            # 模块内部有 _active_window 弱引用，拿过来存强引用
+            from Gomoku.game_window import _active_window as _gomoku_active_win_ref
+            _win = _gomoku_active_win_ref() if _gomoku_active_win_ref is not None else None
+            gomoku_win = _win
+            if _win is not None:
+                def _clear_gomoku_ref(*_):
+                    nonlocal gomoku_win
+                    gomoku_win = None
+                try:
+                    _win.destroyed.connect(_clear_gomoku_ref)
+                except RuntimeError:
+                    pass
+        else:
+            gomoku_win.show()
+            gomoku_win.raise_()
+            gomoku_win.activateWindow()
 
     # ===== 连接相框信号 =====
     tray.pf_next.connect(pf_window.show_next)

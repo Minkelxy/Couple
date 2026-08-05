@@ -83,7 +83,10 @@ class StatsWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("统计看板 📊")
         self.resize(400, 380)
+        # 保存子控件引用，refresh() 时重设数据
+        self._cards: list[tuple[QLabel, QLabel]] = []
         self._build_ui()
+        self.refresh()
 
     def _build_ui(self) -> None:
         central = QWidget(self)
@@ -96,23 +99,11 @@ class StatsWindow(QMainWindow):
         title.setStyleSheet("font-size:20px; font-weight:600; color:#e65a7a;")
         layout.addWidget(title)
 
-        # 计算各项数据
-        days = _calc_days_together()
-        letters = letter_store.list_letters(include_unsent=True)
-        unread = letter_store.count_unread()
-        images = ip.list_images(pf_config.load().get("image_dir", ""))
-        next_anniv = _next_anniversary()
-
-        # 卡片式展示
-        layout.addWidget(self._make_card("💕 在一起", f"{days} 天"))
-        layout.addWidget(self._make_card("✉ 信件总数", f"{len(letters)} 封（未读 {unread}）"))
-        layout.addWidget(self._make_card("🖼 照片数量", f"{len(images)} 张"))
-        
-        if next_anniv:
-            name, days_left = next_anniv
-            layout.addWidget(self._make_card("🎉 下个纪念日", f"{name}（还有 {days_left} 天）"))
-        else:
-            layout.addWidget(self._make_card("🎉 下个纪念日", "未设置"))
+        # 四张固定卡片（在一起/信件/照片/纪念日），refresh() 重设文字
+        for lbl in ("💕 在一起", "✉ 信件总数", "🖼 照片数量", "🎉 下个纪念日"):
+            card, value_lbl = self._make_card(lbl, "")
+            self._cards.append(value_lbl)
+            layout.addWidget(card)
 
         layout.addStretch(1)
 
@@ -125,7 +116,26 @@ class StatsWindow(QMainWindow):
         close_btn.clicked.connect(self.close)
         layout.addWidget(close_btn)
 
-    def _make_card(self, label: str, value: str) -> QWidget:
+    def refresh(self) -> None:
+        """重新计算各项统计并更新卡片文本。避免手动调用 __init__ 造成的
+        QMainWindow 二次构造（未定义行为 + 尺寸复位 + central 内存泄漏）。"""
+        days = _calc_days_together()
+        letters = letter_store.list_letters(include_unsent=True)
+        unread = letter_store.count_unread()
+        images = ip.list_images(pf_config.load().get("image_dir", ""))
+        next_anniv = _next_anniversary()
+
+        if self._cards:
+            self._cards[0].setText(f"{days} 天")
+            self._cards[1].setText(f"{len(letters)} 封（未读 {unread}）")
+            self._cards[2].setText(f"{len(images)} 张")
+            if next_anniv:
+                name, days_left = next_anniv
+                self._cards[3].setText(f"{name}（还有 {days_left} 天）")
+            else:
+                self._cards[3].setText("未设置")
+
+    def _make_card(self, label: str, value: str):
         card = QWidget(self)
         card.setStyleSheet(
             "QWidget{background:#fdf2f5; border-radius:10px;}"
@@ -138,4 +148,4 @@ class StatsWindow(QMainWindow):
         val.setStyleSheet("font-size:18px; font-weight:600; color:#333; border:none;")
         cl.addWidget(lbl)
         cl.addWidget(val)
-        return card
+        return card, val

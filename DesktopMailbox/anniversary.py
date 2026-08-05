@@ -5,15 +5,18 @@
 from __future__ import annotations
 
 import json
+import os
+import threading
 from datetime import datetime
 from pathlib import Path
 
-from common_utils import log_warning
+from common_utils import log_exception, log_warning
 
 from . import config
 from . import letter_store
 
 _SENT_LOG = config.DATA_DIR / "anniv_sent_log.json"
+_LOCK = threading.Lock()
 
 
 def _load_sent() -> set[str]:
@@ -27,10 +30,14 @@ def _load_sent() -> set[str]:
 
 
 def _mark_sent(key: str) -> None:
+    """原子写入 sent_log，先于 write_letter 调用（占坑语义：崩溃后也不重复）。"""
     s = _load_sent()
     s.add(key)
-    _SENT_LOG.write_text(json.dumps(sorted(s), ensure_ascii=False, indent=2),
-                         encoding="utf-8")
+    # 临时文件 + os.replace 原子写，避免半写文件下次启动当空重建
+    tmp = _SENT_LOG.with_suffix(".tmp")
+    tmp.write_text(json.dumps(sorted(s), ensure_ascii=False, indent=2),
+                   encoding="utf-8")
+    os.replace(tmp, _SENT_LOG)
 
 
 def check_and_deliver() -> list[dict]:
@@ -50,20 +57,27 @@ def check_and_deliver() -> list[dict]:
             continue
         anniv_id = anniv.get("id") or anniv.get("date")
         key = f"{anniv_id}-{year}"
-        if key in _load_sent():
-            continue  # 今年已投递
+        # 多线程串行化 + 先占坑：先把 key 写入 sent_log，再落信
+        # 崩溃/异常发生在中间：下一次启动 key 已在 sent_log 里，不会重复投递
+        with _LOCK:
+            if key in _load_sent():
+                continue
+            _mark_sent(key)
         # 送达时间：当天指定小时，已过则立即
         hour = int(anniv.get("deliver_hour", 8))
         deliver_at = today.replace(hour=hour, minute=0, second=0, microsecond=0)
         if deliver_at <= today:
             deliver_at = today
-        meta = letter_store.write_letter(
-            author=author,
-            recipient=recipient,
-            title=anniv.get("title", "纪念日"),
-            content=anniv.get("content", ""),
-            deliver_at=deliver_at,
-        )
-        _mark_sent(key)
+        try:
+            meta = letter_store.write_letter(
+                author=author,
+                recipient=recipient,
+                title=anniv.get("title", "纪念日"),
+                content=anniv.get("content", ""),
+                deliver_at=deliver_at,
+            )
+        except Exception:
+            log_exception("纪念日信件写入失败，sent_log 已占坑避免重启重复: %s", key)
+            continue
         created.append(meta)
     return created

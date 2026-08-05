@@ -42,12 +42,25 @@ from . import image_processor as ip
 
 
 def _stop_anim(anim: QPropertyAnimation | None) -> None:
-    """安全停止并释放一个 QPropertyAnimation。"""
+    """安全停止并释放一个 QPropertyAnimation：断开所有信号引用（避免 lambda 捕获对象泄漏）。"""
     if anim is not None:
         try:
             anim.stop()
         except RuntimeError:
             # C++ 对象已被销毁
+            return
+        try:
+            # 断开 finished/stateChanged 等所有信号，释放 lambda 闭包引用
+            # PySide6 无 disconnect(context) 重载，逐个断开已知信号
+            try:
+                anim.finished.disconnect()
+            except (RuntimeError, TypeError):
+                pass
+            try:
+                anim.stateChanged.disconnect()
+            except (RuntimeError, TypeError):
+                pass
+        except Exception:
             pass
 
 
@@ -176,6 +189,9 @@ class FrameWindow(QWidget):
         self._manual_zoom = 1.0  # 滚轮缩放倍数（1.0~3.0）
         self._drag_offset: QPointF | None = None
         self._fade_anim: QPropertyAnimation | None = None
+        # pixmap 暂存：避免 fade_out.finished 的 lambda 闭包捕获导致 pixmap 泄漏
+        self._pending_pixmap: QPixmap | None = None
+        self._pending_kb = False
         self._prefetch_thread: threading.Thread | None = None
         # 预取任务取消令牌：每次启动新预取时自增，旧线程读到变化即退出
         self._prefetch_token = 0
@@ -346,6 +362,9 @@ class FrameWindow(QWidget):
         self._fade_switch(pixmap, kb)
 
     def _fade_switch(self, pixmap: QPixmap, kb: bool) -> None:
+        # 先把 pixmap 存在 self 上，避免 lambda 闭包捕获（长运行会累积泄漏）
+        self._pending_pixmap = pixmap
+        self._pending_kb = bool(kb)
         # 覆盖前先停止旧动画，避免并发修改 windowOpacity 造成闪烁
         _stop_anim(self._fade_anim)
         self._fade_anim = None
@@ -353,9 +372,19 @@ class FrameWindow(QWidget):
         fade_out.setDuration(160)
         fade_out.setStartValue(self.windowOpacity() or 1.0)
         fade_out.setEndValue(0.0)
-        fade_out.finished.connect(lambda: self._apply_pixmap(pixmap, kb))
+        fade_out.finished.connect(self._on_fade_out_done)
         fade_out.start()
         self._fade_anim = fade_out
+
+    def _on_fade_out_done(self) -> None:
+        """fade_out 完成回调：从 self._pending_* 取图，避免 lambda 闭包捕获 pixmap。"""
+        pm = self._pending_pixmap
+        kb = self._pending_kb
+        self._pending_pixmap = None
+        self._pending_kb = False
+        if pm is None:
+            return
+        self._apply_pixmap(pm, kb)
 
     def _apply_pixmap(self, pixmap: QPixmap, kb: bool) -> None:
         self._label.set_image(pixmap, kb_enabled=kb)

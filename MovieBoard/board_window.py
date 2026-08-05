@@ -281,6 +281,10 @@ class BoardWindow(QMainWindow):
         self._build_ui()
         self.refresh()
 
+    def set_hub(self, hub) -> None:
+        """设置变更时热更新同步引用（避免使用已停止的旧 hub）。"""
+        self._hub = hub
+
     # ===== UI 构建 =====
     def _build_ui(self) -> None:
         central = QWidget(self)

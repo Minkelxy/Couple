@@ -40,6 +40,10 @@ class ComposeWindow(QMainWindow):
         self._sync = sync_hub
         self._build_ui()
 
+    def set_sync_hub(self, sync_hub) -> None:
+        """设置变更时热更新同步引用（避免使用已停止的旧 hub）。"""
+        self._sync = sync_hub
+
     def prefill(
         self,
         *,
