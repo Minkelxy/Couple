@@ -305,6 +305,7 @@ class BoardWindow(QMainWindow):
         add_btn.setStyleSheet(_btn_style())
         add_btn.clicked.connect(self._on_add)
         bar.addWidget(add_btn)
+        self._add_btn = add_btn
 
         report_btn = QPushButton("📊 生成年度报告", central)
         report_btn.setStyleSheet(_btn_style())
@@ -378,6 +379,9 @@ class BoardWindow(QMainWindow):
         if self._worker is not None and self._worker.isRunning():
             QMessageBox.information(self, "提示", "上一个搜索还在进行中…")
             return
+        # 搜索中：按钮变 loading 状态
+        self._add_btn.setEnabled(False)
+        self._add_btn.setText("🔍 搜索中…")
         worker = _SearchWorker(title)
         worker.found.connect(self._on_search_found)
         worker.failed.connect(lambda t=title: self._on_search_failed(t))
@@ -389,6 +393,9 @@ class BoardWindow(QMainWindow):
 
     def _clear_worker_ref(self) -> None:
         self._worker = None
+        # 恢复添加按钮
+        self._add_btn.setEnabled(True)
+        self._add_btn.setText("➕ 添加影视")
 
     def _on_search_found(self, info: dict) -> None:
         store.add(
@@ -493,7 +500,8 @@ class BoardWindow(QMainWindow):
         try:
             path = report_generator.generate_year_report(year)
         except Exception as e:
-            QMessageBox.warning(self, "生成失败", f"报告生成失败：{e}")
+            from common_utils import friendly_error
+            QMessageBox.warning(self, "生成失败", friendly_error(e, "年度报告生成失败"))
             return
         btn = QMessageBox.information(
             self, "报告已生成",

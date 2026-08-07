@@ -91,6 +91,7 @@ class SettingsWindow(QMainWindow):
         btn_row = QHBoxLayout()
         btn_row.addStretch(1)
         save_btn = QPushButton("💾 保存设置", self)
+        save_btn.setToolTip("保存所有设置并立即生效")
         save_btn.setStyleSheet(
             "QPushButton{background:#e65a7a;color:#fff;border:none;"
             "border-radius:8px;padding:10px 24px;font-size:14px;}"
@@ -173,10 +174,13 @@ class SettingsWindow(QMainWindow):
         album_layout.addWidget(self._album_list, 1)
         album_btn_row = QHBoxLayout()
         add_album_btn = QPushButton("添加相册…")
+        add_album_btn.setToolTip("选择一个文件夹作为新相册")
         add_album_btn.clicked.connect(self._add_album)
         set_default_btn = QPushButton("设为默认")
+        set_default_btn.setToolTip("将选中的相册设为桌面相框默认显示的相册")
         set_default_btn.clicked.connect(self._set_current_album_from_list)
         del_album_btn = QPushButton("删除选中")
+        del_album_btn.setToolTip("从相册列表中移除（不会删除硬盘上的图片）")
         del_album_btn.clicked.connect(self._del_album)
         album_btn_row.addWidget(add_album_btn)
         album_btn_row.addWidget(set_default_btn)
@@ -736,6 +740,16 @@ class SettingsWindow(QMainWindow):
         row = self._album_list.currentRow()
         if row < 0:
             return
+        item = self._album_list.item(row)
+        if item is None:
+            return
+        album_name = item.text().split("→")[0].strip() if "→" in item.text() else item.text()
+        # 删除前确认
+        if QMessageBox.question(
+            self, "确认删除",
+            f"确定要删除相册「{album_name}」吗？\n（不会删除硬盘上的图片文件，只是从相册列表里移除）"
+        ) != QMessageBox.Yes:
+            return
         item = self._album_list.takeItem(row)
         path = item.data(Qt.UserRole) or (
             item.text().split("→")[-1].strip() if "→" in item.text() else ""
@@ -846,4 +860,5 @@ class SettingsWindow(QMainWindow):
         autostart.toggle(self._autostart.isChecked())
 
         self.settings_changed.emit()
-        QMessageBox.information(self, "已保存", "设置已保存并生效。")
+        # 保存成功后仅 statusBar 提示，不弹模态对话框
+        self.statusBar().showMessage("设置已保存并生效", 3000)

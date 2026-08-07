@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -450,7 +451,7 @@ class GalleryGridWindow(QMainWindow):
         images = ip.list_images(path)
         self._grid_images = images
         if not images:
-            item = QListWidgetItem("把照片放进目录：\n" + path)
+            item = QListWidgetItem("📭 把照片放到这个目录就会显示在这里\n" + path)
             item.setFlags(Qt.NoItemFlags)
             item.setTextAlignment(Qt.AlignCenter)
             self._grid.addItem(item)
@@ -525,19 +526,37 @@ class GalleryGridWindow(QMainWindow):
             return
         current_album_name = self._album_combo.currentText()
         total = len(images)
-        self.statusBar().showMessage(f"正在共享 {total} 张照片给对方…", 0)
+        # 进度条显示在状态栏区域
+        self._share_progress = QProgressBar()
+        self._share_progress.setRange(0, total)
+        self._share_progress.setValue(0)
+        self._share_progress.setFormat(f"共享中 %v/{total}")
+        self._share_progress.setMaximumHeight(24)
+        self.statusBar().addPermanentWidget(self._share_progress)
         worker = _ShareWorker(self._hub, images, current_album_name)
-        worker.progress.connect(
-            lambda s, t: self.statusBar().showMessage(f"已共享 {s}/{t}…", 0)
-        )
+        worker.progress.connect(self._on_share_progress)
         worker.finished_all.connect(self._on_share_done)
         worker.finished.connect(worker.deleteLater)
         self._share_worker = worker
         worker.start()
 
+    def _on_share_progress(self, sent: int, total: int) -> None:
+        if hasattr(self, "_share_progress") and self._share_progress:
+            self._share_progress.setValue(sent)
+
     def _on_share_done(self, sent: int, total: int) -> None:
-        self.statusBar().showMessage(f"已共享 {sent}/{total} 张照片给对方", 5000)
-        QMessageBox.information(self, "共享", f"已共享 {sent}/{total} 张照片给对方。")
+        # 清理进度条
+        if hasattr(self, "_share_progress") and self._share_progress:
+            self.statusBar().removeWidget(self._share_progress)
+            self._share_progress.deleteLater()
+            self._share_progress = None
+        # 用 statusBar 反馈而非模态弹窗
+        if sent == total:
+            self.statusBar().showMessage(f"已共享 {sent} 张照片给对方", 5000)
+        else:
+            self.statusBar().showMessage(
+                f"已共享 {sent}/{total} 张（部分照片因过大被跳过）", 8000
+            )
         self._share_worker = None
 
     def closeEvent(self, event) -> None:

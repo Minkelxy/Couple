@@ -126,6 +126,7 @@ def main() -> int:
         if compose_win is None:
             compose_win = ComposeWindow(sync_hub=hub_holder["hub"])
             compose_win.sent.connect(update_unread)
+            compose_win.toast.connect(lambda msg: tray.show_success(msg, "信件"))
         if author or recipient or title:
             compose_win.prefill(author=author, recipient=recipient, title=title)
         compose_win.show()
@@ -298,6 +299,7 @@ def main() -> int:
 
     def do_backup_export() -> None:
         from PySide6.QtWidgets import QFileDialog
+        from common_utils import friendly_error
         path, _ = QFileDialog.getSaveFileName(
             None, "导出备份",
             f"CoupleSuite_backup_{__import__('datetime').datetime.now().strftime('%Y%m%d')}.zip",
@@ -307,12 +309,13 @@ def main() -> int:
             return
         try:
             saved = backup.export_backup(Path(path))
-            tray.show_toast("备份", f"已导出到 {saved}")
+            tray.show_success(f"已导出到 {saved}", "备份")
         except Exception as e:
-            tray.show_toast("备份失败", str(e))
+            tray.show_error(friendly_error(e, "导出备份"), "备份失败")
 
     def do_backup_restore() -> None:
         from PySide6.QtWidgets import QFileDialog, QMessageBox
+        from common_utils import friendly_error
         path, _ = QFileDialog.getOpenFileName(
             None, "选择备份文件", "", "ZIP 压缩包 (*.zip)"
         )
@@ -325,13 +328,23 @@ def main() -> int:
             return
         try:
             backup.restore_backup(Path(path))
-            # 恢复后重载一切
             pf_window.reload(pf_config.load())
             tray.refresh_albums()
             update_unread()
-            tray.show_toast("恢复", "数据已恢复，请重启应用以完全生效")
+            # 提供立即重启选项
+            restart_btn = QMessageBox.question(
+                None, "恢复完成",
+                "数据已恢复。建议重启应用以完全生效。\n\n是否立即重启？",
+            )
+            if restart_btn == QMessageBox.Yes:
+                import sys, os, subprocess
+                subprocess.Popen([sys.executable] + sys.argv)
+                app.quit()
+                os._exit(0)
+            else:
+                tray.show_success("数据已恢复", "恢复")
         except Exception as e:
-            tray.show_toast("恢复失败", str(e))
+            tray.show_error(friendly_error(e, "恢复备份"), "恢复失败")
 
     def open_checkin() -> None:
         nonlocal checkin_win

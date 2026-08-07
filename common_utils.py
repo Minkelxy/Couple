@@ -155,3 +155,38 @@ def check_attachment_size(data: bytes) -> Optional[str]:
         limit_mb = MAX_ATTACHMENT_BYTES / (1024 * 1024)
         return f"附件过大（{mb:.1f} MB > 上限 {limit_mb:.0f} MB），已拒绝"
     return None
+
+
+# ---------- 错误文案翻译 ----------
+
+def friendly_error(e: Exception, context: str = "") -> str:
+    """把异常对象翻译成用户能看懂的中文提示。
+
+    - PermissionError → "没有权限访问该文件/目录"
+    - FileNotFoundError → "找不到指定的文件或目录"
+    - ConnectionRefusedError → "无法连接到对方，请确认对方已启动并开启同步"
+    - TimeoutError → "操作超时，请检查网络后重试"
+    - OSError (磁盘满) → "磁盘空间不足或文件被占用"
+    - 其他 → 兜底通用文案
+    """
+    msg = str(e).lower()
+    if isinstance(e, PermissionError) or "permission denied" in msg:
+        tip = "没有权限访问该文件或目录，请检查文件是否被其他程序占用"
+    elif isinstance(e, FileNotFoundError) or "no such file" in msg:
+        tip = "找不到指定的文件或目录，可能已被移动或删除"
+    elif isinstance(e, ConnectionRefusedError) or "connection refused" in msg:
+        tip = "无法连接到对方，请确认对方已启动软件并开启了同步"
+    elif isinstance(e, TimeoutError) or "timed out" in msg or "timeout" in msg:
+        tip = "操作超时，请检查网络连接后重试"
+    elif isinstance(e, OSError):
+        if "no space" in msg or "disk full" in msg or "enospc" in msg:
+            tip = "磁盘空间不足，请清理后重试"
+        else:
+            tip = "文件操作失败，文件可能被占用或路径异常"
+    elif isinstance(e, ValueError):
+        tip = f"数据格式有误：{e}"
+    else:
+        tip = f"操作失败：{e}"
+    if context:
+        return f"{context}：{tip}"
+    return tip

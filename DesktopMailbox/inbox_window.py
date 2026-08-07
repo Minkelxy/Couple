@@ -122,7 +122,11 @@ class InboxWindow(QMainWindow):
             item = QListWidgetItem(label)
             item.setData(Qt.UserRole, it["id"])
             self._list.addItem(item)
-        self._preview.setText("<i style='color:#888'>点击左侧信件查看预览</i>")
+        self._preview.setText(
+            "<div style='text-align:center;color:#aaa;padding:40px'>"
+            "← 点击左侧信件查看预览"
+            "</div>"
+        )
         self._del_btn.setEnabled(False)
 
     # ---------- 交互 ----------

@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from common_utils import check_attachment_size
+from common_utils import check_attachment_size, friendly_error
 
 from . import config
 from . import letter_store
@@ -30,6 +30,7 @@ from . import letter_store
 
 class ComposeWindow(QMainWindow):
     sent = Signal()  # 寄出后通知外部刷新
+    toast = Signal(str)  # 请求外部托盘提示（参数=消息文本）
 
     def __init__(self, sync_hub=None) -> None:
         super().__init__()
@@ -142,8 +143,13 @@ class ComposeWindow(QMainWindow):
             "border-radius:8px;padding:12px;font-size:15px;}"
             "QPushButton:hover{background:#d94a6a;}"
         )
+        self._send_btn.setToolTip("寄出信件（Ctrl+Enter）")
         self._send_btn.clicked.connect(self._on_send)
         root.addWidget(self._send_btn)
+
+        # 快捷键：Ctrl+Enter 寄出
+        from PySide6.QtGui import QShortcut, QKeySequence
+        QShortcut(QKeySequence("Ctrl+Return"), self, activated=self._on_send)
 
     # ---------- 附件 ----------
 
@@ -157,12 +163,13 @@ class ComposeWindow(QMainWindow):
         try:
             data = Path(path).read_bytes()
         except OSError as e:
-            QMessageBox.warning(self, "读取失败", str(e))
+            QMessageBox.warning(self, "读取失败", friendly_error(e, "无法读取图片"))
             return
         # 附件大小校验：超限拒绝，避免同步/存储压力
         err = check_attachment_size(data)
         if err is not None:
-            QMessageBox.warning(self, "附件过大", err)
+            QMessageBox.warning(self, "附件过大",
+                "图片大小超过了限制（上限 50 MB），请压缩后再添加")
             return
         self._attachment_bytes = data
         self._attachment_ext = Path(path).suffix
@@ -242,9 +249,14 @@ class ComposeWindow(QMainWindow):
         config.update(my_name=author, their_name=recipient)
 
         when = deliver_at.strftime("%Y-%m-%d %H:%M") if deliver_at > datetime.now() else "现在"
-        QMessageBox.information(self, "已寄出 ✉", f"信件将在 {when} 送达。")
+        # 寄出成功后用 toast 反馈，不弹模态对话框打断用户
+        tip = f"信件将在 {when} 送达" if when != "现在" else "信件已寄出 ✉"
+        self.toast.emit(tip)
+        self.statusBar().showMessage(tip, 5000)
+
         self.sent.emit()
+        # 清空内容但保持窗口打开，方便连续写信
         self._clear_attachment()
         self._title.clear()
         self._body.clear()
-        self.close()
+        self._title.setFocus()

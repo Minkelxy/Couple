@@ -326,11 +326,24 @@ class UnifiedTray(QObject):
     # ---------- 通知 ----------
 
     def show_toast(self, title: str, msg: str) -> None:
-        self._tray.showMessage(title, msg, QSystemTrayIcon.Information, 2000)
+        """成功类通知（信息图标，3 秒）。"""
+        self._tray.showMessage(title, msg, QSystemTrayIcon.Information, 3000)
+
+    def show_success(self, msg: str, title: str = "") -> None:
+        """成功反馈：3 秒，信息图标。"""
+        self._tray.showMessage(title or "完成", msg, QSystemTrayIcon.Information, 3000)
+
+    def show_warning(self, msg: str, title: str = "注意") -> None:
+        """警告反馈：5 秒，警告图标。"""
+        self._tray.showMessage(title, msg, QSystemTrayIcon.Warning, 5000)
+
+    def show_error(self, msg: str, title: str = "出错了") -> None:
+        """错误反馈：8 秒，关键图标。"""
+        self._tray.showMessage(title, msg, QSystemTrayIcon.Critical, 8000)
 
     def show_status(self, msg: str) -> None:
-        """相册状态消息（单参数）。"""
-        self._tray.showMessage("相册", msg, QSystemTrayIcon.Information, 1500)
+        """相册状态消息（单参数，2 秒）。"""
+        self._tray.showMessage("相册", msg, QSystemTrayIcon.Information, 2000)
 
     def set_unread_count(self, n: int) -> None:
         self._unread_count = n
