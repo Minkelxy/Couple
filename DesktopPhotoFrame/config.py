@@ -100,6 +100,11 @@ DEFAULTS = {
     "albums": [{"name": DEFAULT_ALBUM_NAME, "path": str(app_paths.IMAGES_DIR)}],
     # 对方共享相册：[{name, path}]，接收对方照片的目录
     "partner_albums": [],
+    # 收藏列表（文件绝对路径字符串）
+    "favorites": [],
+    # 相框窗口位置（拖动后持久化，None 表示首次启动用默认右下角）
+    "window_x": None,
+    "window_y": None,
 }
 
 
@@ -136,6 +141,19 @@ def load() -> dict:
     data["albums"] = _ensure_default_album_entry(data.get("albums", []))
     partner_albums = data.get("partner_albums", [])
     data["partner_albums"] = partner_albums if isinstance(partner_albums, list) else []
+    # favorites 类型校正：必须是字符串列表
+    favs = data.get("favorites", [])
+    if not isinstance(favs, list):
+        favs = []
+    data["favorites"] = [str(p) for p in favs if p]
+    # window_x/y 类型校正：None 或 int
+    for k in ("window_x", "window_y"):
+        v = data.get(k)
+        if v is not None:
+            try:
+                data[k] = int(v)
+            except (TypeError, ValueError):
+                data[k] = None
     # image_dir 的兜底：如果用户之前把它设到了不存在/空的路径，就切回默认相册目录
     image_dir_str = str(data.get("image_dir", "") or str(app_paths.IMAGES_DIR))
     if not image_dir_str or image_dir_str.lower() in {"null", "none"}:
@@ -197,3 +215,36 @@ def add_partner_album_path(path: str) -> dict:
 def get_partner_albums() -> list[dict]:
     """返回对方共享相册列表。"""
     return load().get("partner_albums", [])
+
+
+# ---------- 收藏 ----------
+
+def toggle_favorite(path: str) -> bool:
+    """切换收藏状态，返回切换后是否为收藏。"""
+    data = load()
+    favs = set(data.get("favorites", []))
+    is_fav = path in favs
+    if is_fav:
+        favs.discard(path)
+    else:
+        favs.add(path)
+    data["favorites"] = sorted(favs)
+    save(data)
+    return not is_fav
+
+
+def is_favorite(path: str) -> bool:
+    """是否已收藏。"""
+    return path in set(load().get("favorites", []))
+
+
+def list_favorites() -> list[str]:
+    """返回收藏列表（绝对路径字符串）。"""
+    return load().get("favorites", [])
+
+
+# ---------- 相框窗口位置持久化 ----------
+
+def save_window_pos(x: int, y: int) -> None:
+    """保存相框窗口位置（拖动结束调用）。"""
+    update(window_x=int(x), window_y=int(y))

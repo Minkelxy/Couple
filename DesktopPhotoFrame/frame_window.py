@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import random
+import subprocess
+import sys
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -22,6 +24,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import (
     QColor,
+    QFont,
     QMouseEvent,
     QPainter,
     QPainterPath,
@@ -31,6 +34,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
+    QMessageBox,
     QVBoxLayout,
     QWidget,
 )
@@ -197,6 +201,8 @@ class FrameWindow(QWidget):
         self._prefetch_token = 0
         # 预取线程读取的快照（避免子线程读主线程可变数据）
         self._prefetch_lock = threading.Lock()
+        # 只看收藏模式（reload 时按收藏列表过滤）
+        self._favorites_only = False
 
         self.setWindowFlags(
             Qt.FramelessWindowHint
@@ -261,6 +267,15 @@ class FrameWindow(QWidget):
 
     def _place_initial(self) -> None:
         screen = self.screen().availableGeometry()
+        saved_x = self._cfg.get("window_x")
+        saved_y = self._cfg.get("window_y")
+        # 有持久化位置且在某屏幕可见范围内：恢复位置
+        if saved_x is not None and saved_y is not None:
+            if (screen.left() <= saved_x <= screen.right()
+                    and screen.top() <= saved_y <= screen.bottom()):
+                self.move(int(saved_x), int(saved_y))
+                return
+        # 默认右下角
         w, h = self.width(), self.height()
         margin = 40
         self.move(screen.right() - w - margin, screen.bottom() - h - margin)
@@ -282,6 +297,10 @@ class FrameWindow(QWidget):
         if cfg is not None:
             self._cfg = cfg
         self._images = ip.list_images(self._cfg["image_dir"])
+        # 只看收藏模式：仅保留收藏列表中的照片
+        if self._favorites_only:
+            favs = set(config.list_favorites())
+            self._images = [p for p in self._images if str(p) in favs]
         self._apply_interval()
         self._label.set_radius(self._cfg.get("corner_radius", 18))
         self._apply_theme()
@@ -330,7 +349,9 @@ class FrameWindow(QWidget):
 
     def shuffle(self) -> None:
         if len(self._images) > 1:
-            self._index = random.randrange(len(self._images))
+            # 排除当前索引，避免连续出现同一张
+            choices = [i for i in range(len(self._images)) if i != self._index]
+            self._index = random.choice(choices)
             self._switch_to(self._images[self._index])
 
     def _switch_to(self, src: Path) -> None:
@@ -463,10 +484,17 @@ class FrameWindow(QWidget):
         t.start()
 
     def _show_placeholder(self, text: str) -> None:
-        self._label.clear_image()
-        # 用简单方式：画一个临时 pixmap 文本？这里用 tooltip + 空白
+        # 绘制可见提示文字的 pixmap，而非仅设 tooltip（空目录时窗口完全透明会让用户以为软件没启动）
+        pm = QPixmap(self._label.width(), self._label.height())
+        pm.fill(Qt.transparent)
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setPen(QPen(QColor(200, 200, 200, 180)))
+        p.setFont(QFont("Microsoft YaHei", 11))
+        p.drawText(QRectF(0, 0, pm.width(), pm.height()), Qt.AlignCenter, text)
+        p.end()
+        self._label.set_image(pm, kb_enabled=False)
         self._label.setToolTip(text)
-        self._label.update()
 
     # ---------- 控制 ----------
 
@@ -536,6 +564,109 @@ class FrameWindow(QWidget):
         if 0 <= self._index < len(self._images):
             self._switch_to(self._images[self._index])
 
+    # ---------- 当前照片操作（收藏/删除/文件夹/壁纸/旋转） ----------
+
+    def toggle_favorite_current(self) -> None:
+        """收藏/取消收藏当前照片。"""
+        if not self._images or self._index < 0:
+            return
+        src = str(self._images[self._index])
+        is_fav = config.toggle_favorite(src)
+        self.status_message.emit("⭐ 已收藏" if is_fav else "已取消收藏")
+
+    def toggle_favorites_only(self) -> bool:
+        """切换只看收藏模式，返回切换后状态。"""
+        self._favorites_only = not self._favorites_only
+        self.reload()
+        self.status_message.emit("只看收藏" if self._favorites_only else "显示全部")
+        return self._favorites_only
+
+    def delete_current(self) -> None:
+        """删除当前照片（带确认对话框，不可撤销）。"""
+        if not self._images or self._index < 0:
+            return
+        src = self._images[self._index]
+        btn = QMessageBox.question(
+            self, "删除照片",
+            f"确定删除「{src.name}」吗？\n此操作不可撤销，文件将从磁盘移除。"
+        )
+        if btn != QMessageBox.Yes:
+            return
+        try:
+            src.unlink()
+        except OSError as e:
+            self.status_message.emit(f"删除失败：{e}")
+            return
+        # 同步从收藏列表移除（避免只看收藏模式下残留无效项）
+        try:
+            if config.is_favorite(str(src)):
+                config.toggle_favorite(str(src))
+        except Exception:
+            pass
+        del self._images[self._index]
+        # 清 pixmap 缓存避免复用已删图的旧 pixmap
+        try:
+            ip.get_cache().clear()
+        except Exception:
+            pass
+        if not self._images:
+            self._show_placeholder("相册已空")
+            self._timer.stop()
+        else:
+            self._index = min(self._index, len(self._images) - 1)
+            self._switch_to(self._images[self._index])
+        self.status_message.emit(f"已删除 {src.name}")
+
+    def open_in_explorer(self) -> None:
+        """在系统文件管理器中定位当前照片。"""
+        if not self._images or self._index < 0:
+            return
+        src = self._images[self._index]
+        try:
+            if sys.platform == "win32":
+                subprocess.Popen(["explorer", "/select,", str(src)])
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", "-R", str(src)])
+            else:
+                subprocess.Popen(["xdg-open", str(src.parent)])
+        except OSError as e:
+            self.status_message.emit(f"打开失败：{e}")
+
+    def set_as_wallpaper(self) -> None:
+        """设为桌面壁纸（仅 Windows）。"""
+        if not self._images or self._index < 0:
+            return
+        src = self._images[self._index]
+        if sys.platform != "win32":
+            self.status_message.emit("设为壁纸仅支持 Windows")
+            return
+        try:
+            import ctypes
+            # SPI_SETDESKWALLPAPER=20, SPIF_UPDATEINIFILE|SPIF_SENDCHANGE=3
+            result = ctypes.windll.user32.SystemParametersInfoW(20, 0, str(src), 3)
+            if result:
+                self.status_message.emit(f"已设为桌面壁纸：{src.name}")
+            else:
+                self.status_message.emit("设为壁纸失败")
+        except Exception as e:
+            self.status_message.emit(f"设为壁纸失败：{e}")
+
+    def rotate_current(self) -> None:
+        """顺时针旋转当前照片 90°，写回原文件并刷新显示。"""
+        if not self._images or self._index < 0:
+            return
+        src = self._images[self._index]
+        if not ip.rotate_image_in_place(src, 90):
+            self.status_message.emit("旋转失败")
+            return
+        # 清缓存强制重新加载（文件已变）
+        try:
+            ip.get_cache().clear()
+        except Exception:
+            pass
+        self._switch_to(src)
+        self.status_message.emit(f"已旋转 90°：{src.name}")
+
     # ---------- 鼠标交互 ----------
 
     def mousePressEvent(self, e: QMouseEvent) -> None:
@@ -549,6 +680,12 @@ class FrameWindow(QWidget):
             e.accept()
 
     def mouseReleaseEvent(self, e: QMouseEvent) -> None:
+        if self._drag_offset is not None:
+            # 拖动结束，持久化相框位置
+            try:
+                config.save_window_pos(self.x(), self.y())
+            except Exception:
+                log_warning("保存相框位置失败")
         self._drag_offset = None
         e.accept()
 

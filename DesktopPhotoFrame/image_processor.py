@@ -7,7 +7,7 @@ from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 from PySide6.QtGui import QPixmap
 
 import font_utils
@@ -147,6 +147,12 @@ _EXIF_DATE_ORIG = 0x9003   # DateTimeOriginal
 _EXIF_DATE_DIG = 0x9004    # DateTimeDigitized
 _EXIF_MAKE = 0x010F
 _EXIF_MODEL = 0x0110
+_EXIF_ORIENTATION = 0x0112
+_EXIF_FNUMBER = 0x829D     # 光圈 F
+_EXIF_EXPOSURE = 0x829A    # 快门（秒）
+_EXIF_ISO = 0x8827         # ISO
+_EXIF_FOCAL = 0x920A       # 焦距 mm
+_EXIF_GPS = 0x8825         # GPS IFD
 
 
 def read_exif_info(src: Path) -> str:
@@ -170,6 +176,109 @@ def read_exif_info(src: Path) -> str:
     if make or model:
         parts.append(f"{make} {model}".strip())
     return "  ·  ".join(parts)
+
+
+def _read_exif_date(src: Path) -> str:
+    """读 EXIF DateTimeOriginal，返回 'YYYY-MM-DD' 或空串。"""
+    try:
+        with Image.open(src) as im:
+            exif = im.getexif()
+    except Exception:
+        return ""
+    if not exif:
+        return ""
+    date = exif.get(_EXIF_DATE_ORIG) or exif.get(_EXIF_DATE_DIG)
+    if not date:
+        return ""
+    # 形如 "2023:08:14 18:22:05" → "2023-08-14"
+    return str(date).replace(":", "-", 2).split(" ", 1)[0]
+
+
+def read_exif_details(src: Path) -> dict:
+    """读取完整 EXIF 信息，返回 dict；读取失败返回空 dict。
+
+    字段：拍摄日期/机型/光圈/快门/ISO/焦距/GPS（仅有/无）。
+    """
+    try:
+        with Image.open(src) as im:
+            exif = im.getexif()
+    except Exception:
+        return {}
+    if not exif:
+        return {}
+    info: dict[str, str] = {}
+    # 日期
+    date = exif.get(_EXIF_DATE_ORIG) or exif.get(_EXIF_DATE_DIG)
+    if date:
+        info["拍摄日期"] = str(date).replace(":", "-", 2).split(" ", 1)[0]
+    # 机型
+    make = (exif.get(_EXIF_MAKE) or "").strip()
+    model = (exif.get(_EXIF_MODEL) or "").strip()
+    if make or model:
+        info["机型"] = f"{make} {model}".strip()
+    # 光圈
+    fnum = exif.get(_EXIF_FNUMBER)
+    if fnum:
+        try:
+            info["光圈"] = f"f/{float(fnum):.1f}"
+        except (TypeError, ValueError):
+            pass
+    # 快门
+    exp = exif.get(_EXIF_EXPOSURE)
+    if exp:
+        try:
+            v = float(exp)
+            info["快门"] = f"1/{int(1 / v)}" if 0 < v < 1 else f"{v:.1f}s"
+        except (TypeError, ValueError):
+            pass
+    # ISO
+    iso = exif.get(_EXIF_ISO)
+    if iso:
+        info["ISO"] = str(iso)
+    # 焦距
+    focal = exif.get(_EXIF_FOCAL)
+    if focal:
+        try:
+            info["焦距"] = f"{float(focal):.0f}mm"
+        except (TypeError, ValueError):
+            pass
+    # GPS（简化：只标"有位置"，完整解析留给后续）
+    if exif.get(_EXIF_GPS):
+        info["GPS"] = "有位置信息"
+    return info
+
+
+def rotate_image_in_place(src: Path, degrees: int = 90) -> bool:
+    """原地旋转图片（顺时针 degrees 度），写回原文件。返回是否成功。
+
+    策略：先 exif_transpose 应用已有方向 → rotate 像素 → 保存并清除 EXIF Orientation。
+    JPEG 保留其他 EXIF（机型/光圈等），Orientation 标签置 1（Normal）。
+    """
+    try:
+        with Image.open(src) as im:
+            im.load()
+            # 先应用现有 EXIF 方向，保证旋转基于"正确朝向"的像素
+            im = ImageOps.exif_transpose(im)
+            # PIL rotate 正值为逆时针，顺时针用负角度
+            im = im.rotate(-degrees, expand=True)
+            # 保留 EXIF 但清除 Orientation（已应用到像素）
+            exif = im.getexif() if hasattr(im, "getexif") else None
+            if exif and _EXIF_ORIENTATION in exif:
+                exif[_EXIF_ORIENTATION] = 1  # Normal
+            save_kwargs: dict = {}
+            if exif is not None:
+                try:
+                    exif_bytes = exif.tobytes() if exif else None
+                    if exif_bytes:
+                        save_kwargs["exif"] = exif_bytes
+                except Exception:
+                    pass
+            fmt = im.format or "JPEG"
+            im.save(src, format=fmt, **save_kwargs)
+        return True
+    except Exception:
+        log_exception("旋转图片失败: %s", src)
+        return False
 
 
 class PixmapCache:
@@ -266,6 +375,8 @@ def process_to_pil(
     try:
         with Image.open(src) as src_img:
             src_img.load()
+            # 应用 EXIF Orientation 方向标签，避免手机竖拍照片横躺
+            src_img = ImageOps.exif_transpose(src_img)
             # 立刻 copy 出来，with 块退出后文件句柄被释放，img 仍可正常使用
             img = src_img.copy()
     except Exception:
@@ -286,7 +397,8 @@ def process_to_pil(
         img = fit_into(img, target_w, target_h)
 
     if watermark:
-        date_text = datetime.now().strftime("%Y-%m-%d")
+        # 优先用照片拍摄日期，无 EXIF 时用今天
+        date_text = _read_exif_date(src) or datetime.now().strftime("%Y-%m-%d")
         img = add_watermark(img, date_text, accent_rgb=accent_rgb)
 
     if corner_radius > 0 and not ken_burns and not blur_background:

@@ -54,6 +54,13 @@ class UnifiedTray(QObject):
     pf_blur_background = Signal()
     pf_image_dir = Signal(str)
     pf_switch_album = Signal(str)
+    # 当前照片操作（收藏/删除/文件夹/旋转/壁纸）
+    pf_toggle_favorite = Signal()
+    pf_favorites_only = Signal()
+    pf_delete = Signal()
+    pf_open_folder = Signal()
+    pf_rotate = Signal()
+    pf_wallpaper = Signal()
     # 信箱信号
     mb_compose = Signal()
     mb_inbox = Signal()
@@ -103,6 +110,34 @@ class UnifiedTray(QObject):
         self._act_shuffle = QAction("随机一张  🎲", menu)
         self._act_shuffle.triggered.connect(self.pf_shuffle)
         menu.addAction(self._act_shuffle)
+
+        menu.addSeparator()
+
+        # ----- 当前照片操作 -----
+        self._act_fav = QAction("⭐ 收藏当前", menu)
+        self._act_fav.triggered.connect(self.pf_toggle_favorite)
+        menu.addAction(self._act_fav)
+
+        self._act_fav_only = QAction("只看收藏", menu)
+        self._act_fav_only.setCheckable(True)
+        self._act_fav_only.triggered.connect(self._on_favorites_only)
+        menu.addAction(self._act_fav_only)
+
+        self._act_delete = QAction("🗑 删除当前照片", menu)
+        self._act_delete.triggered.connect(self.pf_delete)
+        menu.addAction(self._act_delete)
+
+        self._act_folder = QAction("📂 打开所在文件夹", menu)
+        self._act_folder.triggered.connect(self.pf_open_folder)
+        menu.addAction(self._act_folder)
+
+        self._act_rotate = QAction("🔄 旋转 90°", menu)
+        self._act_rotate.triggered.connect(self.pf_rotate)
+        menu.addAction(self._act_rotate)
+
+        self._act_wallpaper = QAction("🖼 设为桌面壁纸", menu)
+        self._act_wallpaper.triggered.connect(self.pf_wallpaper)
+        menu.addAction(self._act_wallpaper)
 
         menu.addSeparator()
 
@@ -275,6 +310,11 @@ class UnifiedTray(QObject):
 
     def _on_blur_background(self) -> None:
         self._pf_window.toggle_blur_background()
+
+    def _on_favorites_only(self) -> None:
+        """切换只看收藏模式，同步菜单勾选状态。"""
+        on = self._pf_window.toggle_favorites_only()
+        self._act_fav_only.setChecked(on)
 
     def _choose_image_dir(self) -> None:
         cur = pf_config.load()["image_dir"]

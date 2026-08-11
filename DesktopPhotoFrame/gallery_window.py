@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 import app_paths
-from PIL import Image
+from PIL import Image, ImageOps
 from PySide6.QtCore import (
     QEasingCurve,
     QObject,
@@ -59,12 +59,21 @@ def _stop_anim(anim: QPropertyAnimation | None) -> None:
 
 
 def _fit_to_screen(img: Image.Image, max_w: int, max_h: int, zoom: float = 1.0) -> QPixmap:
-    """等比缩放到屏幕内（contain），zoom>1 时放大查看细节。"""
+    """cover 模式：填满屏幕并居中裁剪，无黑边。zoom>1 时进一步放大查看细节。
+
+    用 max(scale_w, scale_h) 保证两个维度都 ≥ 屏幕尺寸，再居中裁剪到屏幕大小。
+    小图也会被放大填满（原 contain 模式 min(..., 1.0) 导致小图周围大黑边）。
+    """
     img = img.convert("RGBA")
     w, h = img.size
-    scale = min(max_w / w, max_h / h, 1.0) * zoom
+    tw, th = max(1, int(max_w)), max(1, int(max_h))
+    scale = max(tw / w, th / h) * zoom
     nw, nh = max(1, int(w * scale)), max(1, int(h * scale))
     img = img.resize((nw, nh), Image.LANCZOS)
+    # 居中裁剪到 tw × th
+    left = max(0, (nw - tw) // 2)
+    top = max(0, (nh - th) // 2)
+    img = img.crop((left, top, left + tw, top + th))
     return ip.pil_to_pixmap(img)
 
 
@@ -84,6 +93,14 @@ class GalleryWindow(QMainWindow):
         self._index = max(0, min(start_index, len(self._images) - 1)) if self._images else 0
         self._zoom = 1.0
         self._fade_anim: QPropertyAnimation | None = None
+        # 自动播放（幻灯片）
+        self._auto_play = False
+        self._auto_timer = QTimer(self)
+        self._auto_timer.setTimerType(Qt.CoarseTimer)
+        self._auto_timer.setInterval(5000)  # 5 秒切一张
+        self._auto_timer.timeout.connect(self.show_next)
+        # 信息浮层引用（按需创建）
+        self._info_label: QLabel | None = None
 
         screen = self.screen().availableGeometry()
         self.resize(screen.width(), screen.height())
@@ -126,19 +143,34 @@ class GalleryWindow(QMainWindow):
         tb_layout = QHBoxLayout(self._toolbar)
         tb_layout.setContentsMargins(16, 10, 16, 10)
         btn_prev = QPushButton("← 上一张")
+        btn_play = QPushButton("▶ 自动播放")
         btn_next = QPushButton("下一张 →")
+        btn_info = QPushButton("ℹ 信息")
         btn_grid = QPushButton("🗂 网格")
         btn_exit = QPushButton("✕ 退出")
-        for btn in (btn_prev, btn_next, btn_grid, btn_exit):
+        for btn in (btn_prev, btn_play, btn_next, btn_info, btn_grid, btn_exit):
             tb_layout.addWidget(btn)
         tb_layout.addStretch(1)
         btn_prev.clicked.connect(self.show_prev)
+        btn_play.clicked.connect(self._toggle_auto_play)
         btn_next.clicked.connect(self.show_next)
+        btn_info.clicked.connect(self._toggle_info)
         btn_grid.clicked.connect(self._on_grid)
         btn_exit.clicked.connect(self.close)
+        self._btn_play = btn_play
         self._toolbar.setParent(central)
         self._toolbar.move(0, 0)
         self._toolbar.setFixedWidth(self.width())
+
+        # 信息浮层（左上角，默认隐藏）
+        self._info_label = QLabel(central)
+        self._info_label.setStyleSheet(
+            "QLabel{background:rgba(0,0,0,180);color:#fff;padding:12px 16px;"
+            "font-size:13px;border-radius:8px;}"
+        )
+        self._info_label.setParent(central)
+        self._info_label.move(16, 60)
+        self._info_label.hide()
 
         # 底部状态栏
         self._status = QLabel(central)
@@ -157,7 +189,7 @@ class GalleryWindow(QMainWindow):
         try:
             with Image.open(src) as src_img:
                 src_img.load()
-                img = src_img.copy()
+                img = ImageOps.exif_transpose(src_img).copy()
         except Exception:
             log_exception("画廊加载图片失败: %s", src)
             self._label.setText(f"无法加载：{src.name}")
@@ -193,6 +225,9 @@ class GalleryWindow(QMainWindow):
     def show_next(self) -> None:
         if not self._images:
             return
+        # 切图时隐藏信息浮层（避免显示上一张的 EXIF）
+        if self._info_label is not None and self._info_label.isVisible():
+            self._info_label.hide()
         self._index = (self._index + 1) % len(self._images)
         self._zoom = 1.0
         self._show_current()
@@ -200,6 +235,8 @@ class GalleryWindow(QMainWindow):
     def show_prev(self) -> None:
         if not self._images:
             return
+        if self._info_label is not None and self._info_label.isVisible():
+            self._info_label.hide()
         self._index = (self._index - 1) % len(self._images)
         self._zoom = 1.0
         self._show_current()
@@ -207,6 +244,38 @@ class GalleryWindow(QMainWindow):
     def _on_grid(self) -> None:
         self.show_grid_requested.emit()
         self.close()
+
+    # ---------- 自动播放 ----------
+    def _toggle_auto_play(self) -> None:
+        self._auto_play = not self._auto_play
+        if self._auto_play:
+            self._auto_timer.start()
+            self._btn_play.setText("⏸ 停止")
+        else:
+            self._auto_timer.stop()
+            self._btn_play.setText("▶ 自动播放")
+
+    # ---------- 信息浮层 ----------
+    def _toggle_info(self) -> None:
+        if self._info_label is None:
+            return
+        if self._info_label.isVisible():
+            self._info_label.hide()
+            return
+        if not self._images:
+            return
+        src = self._images[self._index]
+        info = ip.read_exif_details(src)
+        if not info:
+            self._info_label.setText(f"📷 {src.name}\n无 EXIF 信息")
+        else:
+            lines = [f"📷 {src.name}"]
+            lines.extend(f"{k}：{v}" for k, v in info.items())
+            self._info_label.setText("\n".join(lines))
+        self._info_label.adjustSize()
+        self._info_label.show()
+        # 5 秒后自动隐藏
+        QTimer.singleShot(5000, self._info_label.hide)
 
     # ---------- 悬浮层 ----------
     def _show_overlays(self) -> None:
@@ -248,6 +317,12 @@ class GalleryWindow(QMainWindow):
         self._status.setFixedWidth(self.width())
         super().resizeEvent(e)
 
+    def closeEvent(self, e) -> None:
+        # 关闭时停止自动播放定时器
+        if hasattr(self, "_auto_timer"):
+            self._auto_timer.stop()
+        super().closeEvent(e)
+
 
 class _ThumbWorker(QThread):
     """后台生成缩略图，逐张 emit 结果，避免主线程大相册卡顿。
@@ -271,7 +346,7 @@ class _ThumbWorker(QThread):
             try:
                 with Image.open(src) as src_img:
                     src_img.load()
-                    thumb = ip.fit_into(src_img.copy(), 200, 200)
+                    thumb = ip.fit_into(ImageOps.exif_transpose(src_img).copy(), 200, 200)
                 pm = ip.pil_to_pixmap(thumb)
             except Exception:
                 log_exception("生成缩略图失败: %s", src)

@@ -427,6 +427,13 @@ def main() -> int:
         lambda: tray.sync_blur_background(pf_window.toggle_blur_background())
     )
     tray.pf_image_dir.connect(pf_window.set_image_dir)
+    # 当前照片操作：收藏/删除/文件夹/旋转/壁纸
+    tray.pf_toggle_favorite.connect(pf_window.toggle_favorite_current)
+    tray.pf_favorites_only.connect(lambda: tray._on_favorites_only())
+    tray.pf_delete.connect(pf_window.delete_current)
+    tray.pf_open_folder.connect(pf_window.open_in_explorer)
+    tray.pf_rotate.connect(pf_window.rotate_current)
+    tray.pf_wallpaper.connect(pf_window.set_as_wallpaper)
 
     # ===== 连接信箱信号 =====
     tray.mb_compose.connect(open_compose)
