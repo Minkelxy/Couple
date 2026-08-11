@@ -314,7 +314,7 @@ def main() -> int:
             tray.show_error(friendly_error(e, "导出备份"), "备份失败")
 
     def do_backup_restore() -> None:
-        from PySide6.QtWidgets import QFileDialog, QMessageBox
+        from PySide6.QtWidgets import QFileDialog
         from common_utils import friendly_error
         path, _ = QFileDialog.getOpenFileName(
             None, "选择备份文件", "", "ZIP 压缩包 (*.zip)"
