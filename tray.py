@@ -111,81 +111,86 @@ class UnifiedTray(QObject):
         self._act_shuffle.triggered.connect(self.pf_shuffle)
         menu.addAction(self._act_shuffle)
 
-        menu.addSeparator()
-
-        # ----- 当前照片操作 -----
-        self._act_fav = QAction("⭐ 收藏当前", menu)
-        self._act_fav.triggered.connect(self.pf_toggle_favorite)
-        menu.addAction(self._act_fav)
-
-        self._act_fav_only = QAction("只看收藏", menu)
-        self._act_fav_only.setCheckable(True)
-        self._act_fav_only.triggered.connect(self._on_favorites_only)
-        menu.addAction(self._act_fav_only)
-
-        self._act_delete = QAction("🗑 删除当前照片", menu)
-        self._act_delete.triggered.connect(self.pf_delete)
-        menu.addAction(self._act_delete)
-
-        self._act_folder = QAction("📂 打开所在文件夹", menu)
-        self._act_folder.triggered.connect(self.pf_open_folder)
-        menu.addAction(self._act_folder)
-
-        self._act_rotate = QAction("🔄 旋转 90°", menu)
-        self._act_rotate.triggered.connect(self.pf_rotate)
-        menu.addAction(self._act_rotate)
-
-        self._act_wallpaper = QAction("🖼 设为桌面壁纸", menu)
-        self._act_wallpaper.triggered.connect(self.pf_wallpaper)
-        menu.addAction(self._act_wallpaper)
-
-        menu.addSeparator()
-
+        # 高频操作：暂停 + 画廊
         self._act_pause = QAction("暂停", menu)
         self._act_pause.triggered.connect(self._on_pause)
         menu.addAction(self._act_pause)
 
+        self._act_gallery = QAction("🖼 画廊浏览…", menu)
+        self._act_gallery.triggered.connect(self.open_gallery)
+        menu.addAction(self._act_gallery)
+
+        # 切换相册子菜单（顶部固定"选择图片目录…"，下方动态相册列表）
+        self._album_menu = QMenu("切换相册 ▶", menu)
+        self._act_dir = QAction("选择图片目录…", menu)
+        self._act_dir.triggered.connect(self._choose_image_dir)
+        self._album_menu.addAction(self._act_dir)
+        self._album_menu.addSeparator()
+        menu.addMenu(self._album_menu)
+
+        # 当前照片操作子菜单（低频：收藏/删除/文件夹/旋转/壁纸/放大）
+        cur_menu = QMenu("当前照片 ▶", menu)
+        self._act_fav = QAction("⭐ 收藏当前", menu)
+        self._act_fav.triggered.connect(self.pf_toggle_favorite)
+        cur_menu.addAction(self._act_fav)
+
+        self._act_fav_only = QAction("只看收藏", menu)
+        self._act_fav_only.setCheckable(True)
+        self._act_fav_only.triggered.connect(self._on_favorites_only)
+        cur_menu.addAction(self._act_fav_only)
+
+        cur_menu.addSeparator()
+
+        self._act_delete = QAction("🗑 删除当前照片", menu)
+        self._act_delete.triggered.connect(self.pf_delete)
+        cur_menu.addAction(self._act_delete)
+
+        self._act_folder = QAction("📂 打开所在文件夹", menu)
+        self._act_folder.triggered.connect(self.pf_open_folder)
+        cur_menu.addAction(self._act_folder)
+
+        self._act_rotate = QAction("🔄 旋转 90°", menu)
+        self._act_rotate.triggered.connect(self.pf_rotate)
+        cur_menu.addAction(self._act_rotate)
+
+        self._act_wallpaper = QAction("🖼 设为桌面壁纸", menu)
+        self._act_wallpaper.triggered.connect(self.pf_wallpaper)
+        cur_menu.addAction(self._act_wallpaper)
+
+        cur_menu.addSeparator()
+
         self._act_zoom = QAction("放大/缩小  (双击)", menu)
         self._act_zoom.triggered.connect(self.pf_zoom)
-        menu.addAction(self._act_zoom)
+        cur_menu.addAction(self._act_zoom)
+        menu.addMenu(cur_menu)
 
-        menu.addSeparator()
-
+        # 显示效果子菜单（拍立得/水印/Ken Burns/模糊背景）
         pf_cfg = pf_config.load()
+        fx_menu = QMenu("显示效果 ▶", menu)
         self._act_polaroid = QAction("拍立得边框", menu)
         self._act_polaroid.setCheckable(True)
         self._act_polaroid.setChecked(pf_cfg["polaroid_frame"])
         self._act_polaroid.triggered.connect(self._on_polaroid)
-        menu.addAction(self._act_polaroid)
+        fx_menu.addAction(self._act_polaroid)
 
         self._act_watermark = QAction("日期水印", menu)
         self._act_watermark.setCheckable(True)
         self._act_watermark.setChecked(pf_cfg["show_watermark"])
         self._act_watermark.triggered.connect(self._on_watermark)
-        menu.addAction(self._act_watermark)
+        fx_menu.addAction(self._act_watermark)
 
         self._act_kenburns = QAction("Ken Burns 动画", menu)
         self._act_kenburns.setCheckable(True)
         self._act_kenburns.setChecked(pf_cfg.get("ken_burns", True))
         self._act_kenburns.triggered.connect(self._on_ken_burns)
-        menu.addAction(self._act_kenburns)
+        fx_menu.addAction(self._act_kenburns)
 
         self._act_blur_bg = QAction("模糊背景填充", menu)
         self._act_blur_bg.setCheckable(True)
         self._act_blur_bg.setChecked(pf_cfg.get("blur_background", False))
         self._act_blur_bg.triggered.connect(self._on_blur_background)
-        menu.addAction(self._act_blur_bg)
-
-        self._album_menu = QMenu("切换相册 ▶", menu)
-        menu.addMenu(self._album_menu)
-
-        self._act_dir = QAction("选择图片目录…", menu)
-        self._act_dir.triggered.connect(self._choose_image_dir)
-        menu.addAction(self._act_dir)
-
-        self._act_gallery = QAction("🖼 画廊浏览…", menu)
-        self._act_gallery.triggered.connect(self.open_gallery)
-        menu.addAction(self._act_gallery)
+        fx_menu.addAction(self._act_blur_bg)
+        menu.addMenu(fx_menu)
 
         menu.addSeparator()
 
@@ -202,53 +207,30 @@ class UnifiedTray(QObject):
         self._act_inbox.triggered.connect(self.mb_inbox)
         menu.addAction(self._act_inbox)
 
-        menu.addSeparator()
-
-        # ===== 日历区 =====
-        sec_checkin = QAction("— 日历 —", menu)
-        sec_checkin.setEnabled(False)
-        menu.addAction(sec_checkin)
-
+        # ===== 更多功能子菜单（日历/影视/地图/互动） =====
+        more_menu = QMenu("更多 ▶", menu)
         act_checkin = QAction("📅 打卡日历…", menu)
         act_checkin.triggered.connect(self.open_checkin)
-        menu.addAction(act_checkin)
-
-        menu.addSeparator()
-
-        # ===== 影视区 =====
-        sec_movies = QAction("— 影视 —", menu)
-        sec_movies.setEnabled(False)
-        menu.addAction(sec_movies)
+        more_menu.addAction(act_checkin)
 
         act_movies = QAction("🎬 影视看板…", menu)
         act_movies.triggered.connect(self.open_movies)
-        menu.addAction(act_movies)
-
-        menu.addSeparator()
-
-        # ===== 地图区 =====
-        sec_travel = QAction("— 地图 —", menu)
-        sec_travel.setEnabled(False)
-        menu.addAction(sec_travel)
+        more_menu.addAction(act_movies)
 
         act_travel = QAction("🗺 旅行地图…", menu)
         act_travel.triggered.connect(self.open_travel)
-        menu.addAction(act_travel)
+        more_menu.addAction(act_travel)
 
-        menu.addSeparator()
-
-        # ===== 互动区 =====
-        sec_interact = QAction("— 互动 —", menu)
-        sec_interact.setEnabled(False)
-        menu.addAction(sec_interact)
+        more_menu.addSeparator()
 
         act_heart = QAction("💞 想你了", menu)
         act_heart.triggered.connect(self.send_heart)
-        menu.addAction(act_heart)
+        more_menu.addAction(act_heart)
 
         act_gomoku = QAction("♟ 五子棋", menu)
         act_gomoku.triggered.connect(self.open_gomoku)
-        menu.addAction(act_gomoku)
+        more_menu.addAction(act_gomoku)
+        menu.addMenu(more_menu)
 
         menu.addSeparator()
 
@@ -327,8 +309,11 @@ class UnifiedTray(QObject):
             self.refresh_albums()
 
     def refresh_albums(self) -> None:
-        """重建相册子菜单：每个相册一个 QAction，当前相册打勾。"""
+        """重建相册子菜单：顶部固定"选择图片目录…"，下方每个相册一个 QAction，当前相册打勾。"""
         self._album_menu.clear()
+        # 顶部固定项：添加新相册目录
+        self._album_menu.addAction(self._act_dir)
+        self._album_menu.addSeparator()
         albums = pf_config.list_albums()
         cur_dir = pf_config.load().get("image_dir", "")
         for a in albums:
