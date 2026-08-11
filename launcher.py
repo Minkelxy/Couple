@@ -495,7 +495,6 @@ def main() -> int:
         _has_cloud = bool(_mb_cfg.get("cloud_server", "").strip())
         if not _st.paired and _has_cloud:
             # 用 QTimer.singleShot 让主线程有机会先弹主窗口，再气泡不被挡住
-            from PySide6.QtCore import QTimer
             def _tip():
                 tray.show_toast(
                     "🔐 建议完成配对",
