@@ -19,6 +19,8 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 import app_paths
 import migration
 
+from common_utils import log_info, log_exception, log_warning
+
 from DesktopPhotoFrame import config as pf_config
 from DesktopPhotoFrame.frame_window import FrameWindow
 from DesktopPhotoFrame.gallery_window import GalleryGridWindow
@@ -59,6 +61,8 @@ from PySide6.QtCore import QEventLoop
 
 
 def main() -> int:
+    log_info("========== 应用启动 ==========")
+    log_info("工作目录: %s", str(Path.cwd()))
     QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
@@ -69,7 +73,12 @@ def main() -> int:
 
     # ===== 数据目录初始化与旧数据迁移 =====
     app_paths.ensure_dirs()
-    migration.run_migration()
+    log_info("应用数据目录: %s", str(app_paths.APP_ROOT))
+    try:
+        migration.run_migration()
+        log_info("数据迁移完成")
+    except Exception:
+        log_exception("数据迁移异常")
 
     # ===== 首次运行引导 =====
     if app_paths.is_first_run():
@@ -86,13 +95,16 @@ def main() -> int:
     images_dir.mkdir(parents=True, exist_ok=True)
     pf_window = FrameWindow(pf_cfg)
     pf_window.show()
+    log_info("相框初始化完成，图片目录: %s", str(images_dir))
 
     # ===== 信箱初始化 =====
     mb_config.ensure_dirs()
     anniv_created = anniversary.check_and_deliver()
+    log_info("信箱初始化完成，纪念日投递: %s", len(anniv_created or []))
 
     # ===== 统一托盘 =====
     tray = UnifiedTray(pf_window)
+    log_info("托盘初始化完成")
 
     # 信箱组件
     checker = DueChecker()
@@ -100,6 +112,7 @@ def main() -> int:
     hub_holder = {"hub": SyncHub(mb_config.load())}
     hub_holder["hub"].start()
     set_gomoku_hub(hub_holder["hub"])
+    log_info("同步服务与到期检查已启动")
 
     # 窗口按需创建/复用
     compose_win: ComposeWindow | None = None
@@ -478,6 +491,7 @@ def main() -> int:
     hub_holder["hub"].letter_received.connect(on_sync_received)
     hub_holder["hub"].event_received.connect(on_event_received)
     app.aboutToQuit.connect(lambda: hub_holder["hub"].stop())
+    app.aboutToQuit.connect(lambda: log_info("========== 应用退出 =========="))
 
     update_unread()
 
