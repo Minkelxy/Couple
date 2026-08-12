@@ -11,7 +11,10 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 from PySide6.QtGui import QPixmap
 
 import font_utils
-from common_utils import log_exception
+from common_utils import log_exception, log_warning
+
+# 解压炸弹保护：超过 50MP 的图片拒绝解码（PIL 抛 DecompressionBombError）
+Image.MAX_IMAGE_PIXELS = 50_000_000
 
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".gif", ".tiff"}
 
@@ -379,6 +382,9 @@ def process_to_pil(
             src_img = ImageOps.exif_transpose(src_img)
             # 立刻 copy 出来，with 块退出后文件句柄被释放，img 仍可正常使用
             img = src_img.copy()
+    except Image.DecompressionBombError:
+        log_warning("图片像素超限(疑似解压炸弹)，已跳过: %s", src)
+        return None
     except Exception:
         log_exception("打开图片失败: %s", src)
         return None

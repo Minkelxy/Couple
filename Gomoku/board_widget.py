@@ -22,7 +22,7 @@ class GomokuBoard(QWidget):
     """五子棋棋盘。"""
 
     stone_placed = Signal(int, int, int)   # row, col, color(1黑/2白)
-    game_over = Signal(str)                # "black"/"white"
+    game_over = Signal(object)             # "black"/"white"/0(和棋)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -112,6 +112,11 @@ class GomokuBoard(QWidget):
             self._winner = winner
             self._locked = True
             self.game_over.emit("black" if winner == 1 else "white")
+        elif len(self._moves) == SIZE * SIZE:
+            # 棋盘下满无胜负 → 和棋（_winner=0 区别于黑=1/白=2）
+            self._winner = 0
+            self._locked = True
+            self.game_over.emit(0)
 
     def _check_win(self, row: int, col: int) -> int:
         """从 (row, col) 出发检查 4 个方向是否五连，返回胜方颜色或 0。"""

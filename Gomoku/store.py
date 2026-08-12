@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 import app_paths
-from common_utils import log_warning
+from common_utils import AtomicJsonStore, log_warning
 
 GOMOKU_DIR = app_paths.DATA_DIR / "gomoku"
 
@@ -39,10 +39,45 @@ def save_game(winner: str, moves: list[dict], played_at: str) -> str:
         "played_at": played_at,
     }
     path = GOMOKU_DIR / f"{game_id}.json"
-    path.write_text(
-        json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    AtomicJsonStore(path, default={}).save(record)
     return game_id
+
+
+def append_move(session_id: str, move_dict: dict) -> None:
+    """以 JSONL 追加写方式记录单手棋，供断线重连回放。
+
+    move_dict 含 {session_id, color, row, col, ts, source}。
+    """
+    _ensure_dir()
+    path = GOMOKU_DIR / f"{session_id}.jsonl"
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(move_dict, ensure_ascii=False) + "\n")
+
+
+def load_moves(session_id: str) -> list[dict]:
+    """读取会话的 JSONL 棋谱，逐行解析返回 move 列表。
+
+    文件不存在返回 []；损坏行跳过并记日志。
+    """
+    path: Path = GOMOKU_DIR / f"{session_id}.jsonl"
+    if not path.exists():
+        return []
+    moves: list[dict] = []
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as e:
+        log_warning("读取棋谱失败 %s: %s", session_id, e)
+        return []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            moves.append(json.loads(line))
+        except json.JSONDecodeError as e:
+            log_warning("跳过损坏的棋谱行 %s: %s", session_id, e)
+            continue
+    return moves
 
 
 def list_games() -> list[dict]:

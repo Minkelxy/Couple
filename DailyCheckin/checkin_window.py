@@ -6,6 +6,7 @@ import time
 import weakref
 from datetime import date
 from pathlib import Path
+from PIL import Image, ImageOps
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -191,10 +192,18 @@ class CheckinEditor(QDialog):
         filename = f"{int(time.time())}_{Path(path).name}"
         dest = app_paths.CHECKIN_DIR / "images" / filename
         try:
-            shutil.copy2(path, dest)
-        except OSError:
-            QMessageBox.warning(self, "错误", "无法读取该图片，请换一张。")
-            return
+            # 用 PIL 打开并统一 EXIF 方向，避免手机竖拍照片横躺
+            with Image.open(path) as src_img:
+                src_img.load()
+                img = ImageOps.exif_transpose(src_img).copy()
+            img.save(dest)
+        except Exception:
+            # PIL 处理失败（非图片格式或损坏等），回退到直接复制原图
+            try:
+                shutil.copy2(path, dest)
+            except OSError:
+                QMessageBox.warning(self, "错误", "无法读取该图片，请换一张。")
+                return
         self._image_path = filename
         self._img_label.setText(str(dest))
 

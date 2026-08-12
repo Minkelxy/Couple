@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 import app_paths
+from common_utils import log_exception
 
 # 旧路径（相对项目根目录，即本文件所在目录）
 _PROJECT_ROOT = Path(__file__).parent
@@ -91,49 +92,58 @@ def run_migration() -> bool:
     """执行迁移。返回 True 表示本次执行了迁移，False 表示已迁移跳过。
 
     幂等：已存在 .migrated 标记则直接返回 False。
+    任一步骤失败 → 记录日志 + 不写标记 → 下次启动重新尝试。
     """
     if _MIGRATED_MARKER.exists():
         return False
 
     app_paths.ensure_dirs()
 
+    all_ok = True
+
     # 相框配置
     try:
         _migrate_file(_OLD_PF_CONFIG, _NEW_PF_CONFIG)
     except Exception:
-        pass
+        log_exception("迁移相框配置失败")
+        all_ok = False
 
     # 信箱配置
     try:
         _migrate_file(_OLD_MB_CONFIG, _NEW_MB_CONFIG)
     except Exception:
-        pass
+        log_exception("迁移信箱配置失败")
+        all_ok = False
 
     # 信箱数据目录（递归）
     try:
         _migrate_tree(_OLD_MB_DATA, _NEW_DATA_DIR)
     except Exception:
-        pass
+        log_exception("迁移信箱数据目录失败")
+        all_ok = False
 
     # 相框图片目录（仅图片文件）
     try:
         _migrate_images(_OLD_PF_IMAGES, _NEW_IMAGES_DIR)
     except Exception:
-        pass
+        log_exception("迁移相框图片目录失败")
+        all_ok = False
 
     # 默认相册：若 images 目录为空（首次运行），复制内置默认相册
     try:
         _seed_default_album()
     except Exception:
-        pass
+        log_exception("复制默认相册失败")
+        all_ok = False
 
-    # 写迁移标记
-    try:
-        _MIGRATED_MARKER.write_text(
-            datetime.now().isoformat(timespec="seconds"), encoding="utf-8"
-        )
-    except Exception:
-        pass
+    # 仅当所有步骤都成功时才写迁移标记，任一步骤失败下次启动重新尝试
+    if all_ok:
+        try:
+            _MIGRATED_MARKER.write_text(
+                datetime.now().isoformat(timespec="seconds"), encoding="utf-8"
+            )
+        except Exception:
+            log_exception("写迁移标记失败")
 
     return True
 

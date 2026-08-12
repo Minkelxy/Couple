@@ -11,6 +11,7 @@ CONFIG_DIR = APP_ROOT / "config"
 DATA_DIR = APP_ROOT / "data"        # 信箱数据
 IMAGES_DIR = APP_ROOT / "images"    # 相框默认图片目录
 CACHE_DIR = APP_ROOT / "cache"
+LOGS_DIR = APP_ROOT / "logs"
 SUITE_CONFIG = CONFIG_DIR / "suite.json"
 # 四大新模块数据目录
 CHECKIN_DIR = APP_ROOT / "checkin"    # 打卡日历
@@ -19,7 +20,7 @@ TRAVEL_DIR = APP_ROOT / "travel"      # 旅行地图
 
 
 def ensure_dirs():
-    for d in (APP_ROOT, CONFIG_DIR, DATA_DIR, IMAGES_DIR, CACHE_DIR,
+    for d in (APP_ROOT, CONFIG_DIR, DATA_DIR, IMAGES_DIR, CACHE_DIR, LOGS_DIR,
               CHECKIN_DIR, MOVIES_DIR, TRAVEL_DIR):
         d.mkdir(parents=True, exist_ok=True)
     (DATA_DIR / "letters").mkdir(exist_ok=True)

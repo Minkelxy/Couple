@@ -68,15 +68,17 @@ def handle_partner_event(meta: dict, content: str, attachment: bytes,
     """
     global _active_window
     evt = meta.get("type", "")
-    if evt not in ("gomoku_move", "gomoku_ctrl"):
-        return
     kind = meta.get("kind", "")
+    # 走子事件：新协议 type=gomoku_move；老协议 type=gomoku_ctrl+kind=move 或 type=move
+    is_move = evt == "gomoku_move" or evt == "move" or kind == "move"
+    if not is_move and evt != "gomoku_ctrl":
+        return
     # invite 可以在无窗口时到达 → 需要主动建窗口再弹邀请
     win = _active_window() if _active_window is not None else None
     if win is None:
         win = GameWindow(hub=_hub_ref["hub"])
         win.show()
-    if evt == "gomoku_move":
+    if is_move:
         win.on_partner_move(meta, content, attachment, att_ext)
     else:
         win.on_partner_ctrl(meta, content, attachment, att_ext)
@@ -136,7 +138,8 @@ class HistoryWindow(QDialog):
             winner = g.get("winner", "?")
             n = g.get("moves_count", 0)
             ts = g.get("played_at", "")[:16].replace("T", " ")
-            text = f"{ts}  ·  {winner} 胜  ·  {n} 手"
+            result_text = "和棋" if winner == "draw" else f"{winner} 胜"
+            text = f"{ts}  ·  {result_text}  ·  {n} 手"
             item = QListWidgetItem(text)
             item.setData(Qt.UserRole, g.get("id", ""))
             self._list.addItem(item)
@@ -327,6 +330,7 @@ class GameWindow(QMainWindow):
             self._i_start_first = True       # 被邀请方执黑先手
             self._game_over = False
             self._board.clear_board()
+            self._try_replay_session(session_id)
             self._sync_lock()
             self._status("你接受了邀请，你执黑先手！")
             log_info("gomoku session created %s (invitee=我先下)", session_id)
@@ -362,6 +366,17 @@ class GameWindow(QMainWindow):
                 "session_id": self._session_id,
             }, silent=True)
             self._status("等待对方落子…")
+            # 追加写棋谱（本地落子）
+            try:
+                store.append_move(self._session_id, {
+                    "session_id": self._session_id,
+                    "color": "black" if color == 1 else "white",
+                    "row": row, "col": col,
+                    "ts": datetime.now().isoformat(timespec="seconds"),
+                    "source": "local",
+                })
+            except Exception:
+                log_warning("gomoku append_move failed (local)")
         else:
             cur = "黑" if self._board.current_color() == 1 else "白"
             self._status(f"轮到 {cur} 方落子")
@@ -371,7 +386,10 @@ class GameWindow(QMainWindow):
 
     def on_partner_move(self, meta: dict, content: str, attachment: bytes,
                         att_ext: str) -> None:
-        if meta.get("type") != "gomoku_move":
+        # 兼容老协议：gomoku_move (新) 或 move (老)
+        _evt = meta.get("type", "")
+        _kind = meta.get("kind", "")
+        if _evt != "gomoku_move" and _evt != "move" and _kind != "move":
             return
         if self._game_over:
             return
@@ -400,6 +418,17 @@ class GameWindow(QMainWindow):
         # 对方颜色按 white 放置
         log_info("gomoku RECV move (%d,%d) session=%s", row, col, self._session_id)
         self._board.place_stone(row, col, 2)
+        # 追加写棋谱（对方落子）
+        try:
+            store.append_move(self._session_id, {
+                "session_id": self._session_id,
+                "color": "white",
+                "row": row, "col": col,
+                "ts": datetime.now().isoformat(timespec="seconds"),
+                "source": "remote",
+            })
+        except Exception:
+            log_warning("gomoku append_move failed (remote)")
         if not self._game_over:
             self._status("轮到你落子（黑棋）")
         self._sync_lock()
@@ -430,6 +459,7 @@ class GameWindow(QMainWindow):
             self._i_start_first = False
             self._game_over = False
             self._board.clear_board()
+            self._try_replay_session(self._session_id)
             self._board.set_locked(True)
             self._status("对方接受了邀请，对方先手，请等待…")
             return
@@ -616,19 +646,57 @@ class GameWindow(QMainWindow):
         dlg = HistoryWindow(self)
         dlg.exec()
 
+    # ---------- 断线重连回放 ----------
+
+    def _try_replay_session(self, session_id: str) -> None:
+        """断线重连恢复：若存在该会话的 JSONL 棋谱，回放到棋盘。"""
+        if not session_id:
+            return
+        try:
+            moves = store.load_moves(session_id)
+        except Exception:
+            return
+        if not moves:
+            return
+        # 回放期间屏蔽棋盘信号，避免触发 game_over 重复保存
+        self._board.blockSignals(True)
+        try:
+            for mv in moves:
+                try:
+                    r = int(mv.get("row", -1))
+                    c = int(mv.get("col", -1))
+                except (TypeError, ValueError):
+                    continue
+                if r < 0 or c < 0:
+                    continue
+                color = 1 if mv.get("color") == "black" else 2
+                self._board.place_stone(r, c, color)
+        finally:
+            self._board.blockSignals(False)
+        # 若回放后已有胜负，同步窗口状态
+        if getattr(self._board, "_winner", 0):
+            self._game_over = True
+        log_info("gomoku replayed %d moves for session %s", len(moves), session_id)
+
     # ---------- 结束 ----------
 
-    def _on_game_over(self, winner: str) -> None:
+    def _on_game_over(self, winner: str | int) -> None:
         self._game_over = True
         self._board.set_locked(True)
-        self._status(f"{winner} 胜！点击重新开局")
+        if winner == 0 or winner == "draw":
+            # 和棋
+            self._status("和棋！点击重新开局")
+            winner_str = "draw"
+        else:
+            self._status(f"{winner} 胜！点击重新开局")
+            winner_str = winner
         records = [
             {"row": r, "col": c, "color": "black" if cl == 1 else "white"}
             for r, c, cl in self._board.get_moves()
         ]
         try:
             store.save_game(
-                winner, records,
+                winner_str, records,
                 datetime.now().isoformat(timespec="seconds"),
             )
         except Exception:

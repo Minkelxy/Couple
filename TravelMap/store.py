@@ -15,9 +15,12 @@ from __future__ import annotations
 import json
 
 import app_paths
-from common_utils import log_warning
+from common_utils import AtomicJsonStore, log_warning
 
 _DATA_PATH = app_paths.TRAVEL_DIR / "cities.json"
+
+# 城市列表原子写存储（顶层为 list）
+_store = AtomicJsonStore(_DATA_PATH, default=[])
 
 _VALID_TYPES = {"visited", "wish"}
 _VALID_SOURCES = {"self", "partner"}
@@ -45,10 +48,7 @@ def _load() -> list[dict]:
 
 def _save(items: list[dict]) -> None:
     """将城市列表写入磁盘。"""
-    app_paths.TRAVEL_DIR.mkdir(parents=True, exist_ok=True)
-    _DATA_PATH.write_text(
-        json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    _store.save(items)
 
 
 def add(city_name: str, lat: float, lng: float, type: str,

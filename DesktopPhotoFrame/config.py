@@ -6,10 +6,12 @@ import shutil
 from pathlib import Path
 
 import app_paths
-from common_utils import log_exception, log_warning
+from common_utils import AtomicJsonStore, log_exception, log_warning
 from version import resource_path
 
 CONFIG_PATH = app_paths.CONFIG_DIR / "photo_frame.json"
+# 原子写存储实例：仅 save 路径走原子写，load 仍走自带默认值合并逻辑
+_store = AtomicJsonStore(CONFIG_PATH, default={})
 DEFAULT_ALBUM_NAME = "默认相册"
 _IMG_EXTS = {
     ".jpg", ".jpeg", ".png", ".bmp", ".webp",
@@ -163,9 +165,7 @@ def load() -> dict:
 
 
 def save(data: dict) -> None:
-    CONFIG_PATH.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    _store.save(data)
 
 
 def update(**kwargs) -> dict:

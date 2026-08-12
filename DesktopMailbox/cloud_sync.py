@@ -28,9 +28,11 @@ def _b64e(data: bytes) -> str:
 
 
 class CloudSyncClient:
-    def __init__(self, server: str, pair_code: str) -> None:
+    def __init__(self, server: str, pair_code: str, sig_dedup_fn=None) -> None:
         self._server = server.rstrip("/")
         self._pair_code = pair_code  # legacy 兜底：用户未配对时仍可用
+        # 接收端签名 LRU 去重回调：由 SyncHub 注入，云轮询与局域网收信共享同一 LRU
+        self._sig_dedup_fn = sig_dedup_fn
 
     # ---------- 发送 ----------
 
@@ -162,6 +164,16 @@ class CloudSyncClient:
                     k: v for k, v in meta.items() if k != "sig_b64"
                 })
                 return None
+            # 签名 LRU 去重：复用 SyncHub 的 LRU，与局域网收信共享同一去重表
+            # 仅当注入了去重回调且 meta 含 sig_b64 时才查 LRU
+            if self._sig_dedup_fn is not None:
+                sig_b64 = meta.get("sig_b64", "")
+                if sig_b64 and not self._sig_dedup_fn(sig_b64):
+                    log_info(
+                        "云中转信件重复签名，已丢弃（LRU 去重）: type=%s",
+                        meta.get("type", "letter"),
+                    )
+                    return None
         return {
             "meta": meta,
             "content": content,

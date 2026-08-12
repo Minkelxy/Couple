@@ -6,12 +6,14 @@ import sqlite3
 from datetime import date, datetime, timedelta
 
 import app_paths
-from common_utils import log_warning
+from common_utils import AtomicJsonStore, log_warning
 
 DB_PATH = app_paths.CHECKIN_DIR / "checkin.db"
 IMAGES_DIR = app_paths.CHECKIN_DIR / "images"
 PARTNER_FILE = app_paths.CHECKIN_DIR / "partner_checkins.json"
 PARTNER_IMAGES_DIR = app_paths.CHECKIN_DIR / "partner_images"
+# 对方打卡记录原子写存储
+_partner_store = AtomicJsonStore(PARTNER_FILE, default={})
 
 # 5=最开心，1=最困
 MOOD_MAP = {5: "😊", 4: "😍", 3: "😢", 2: "😡", 1: "😴"}
@@ -115,10 +117,7 @@ def _load_partner() -> dict:
 
 
 def _save_partner(data: dict) -> None:
-    app_paths.CHECKIN_DIR.mkdir(parents=True, exist_ok=True)
-    PARTNER_FILE.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    _partner_store.save(data)
 
 
 def add_partner_record(date_str: str, mood: int, note: str,
@@ -161,6 +160,12 @@ def get_partner_range(start_date: str, end_date: str) -> list[dict]:
     ]
     result.sort(key=lambda r: r.get("date", ""))
     return result
+
+def get_partner_recent(days: int = 30) -> list[dict]:
+    """获取对方最近 N 天的记录，按日期升序。"""
+    today = date.today()
+    start = today - timedelta(days=days - 1)
+    return get_partner_range(start.isoformat(), today.isoformat())
 
 
 init_db()

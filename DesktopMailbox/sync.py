@@ -16,6 +16,7 @@
 """
 from __future__ import annotations
 
+import collections
 import json
 import socket
 import socketserver
@@ -93,13 +94,21 @@ class SyncHub(QObject):
         self._cursor_path: Path = app_paths.DATA_DIR / "cloud_cursor.json"
         self._cloud_last_ts: str = self._load_cursor()
         self._cursor_lock = threading.Lock()
+        # 接收端签名 LRU 去重：容量 1024，线程安全（on_received 在 socket 线程与云轮询线程中可能并发）
+        # 基于 meta.sig_b64 去重，防止同一签名消息被重复落盘/触发事件
+        self._seen_sigs: collections.OrderedDict[str, None] = collections.OrderedDict()
+        self._sig_lock = threading.Lock()
+        self._sig_lru_max = 1024
         mode = cfg.get("sync_mode", "lan")
         self._cloud_client: CloudSyncClient | None = None
         if mode in ("cloud", "both"):
             server = cfg.get("cloud_server", "").strip()
             pair_code = cfg.get("cloud_pair_code", "").strip()
             if server and pair_code:
-                self._cloud_client = CloudSyncClient(server, pair_code)
+                # 把 _check_and_record_sig 注入 CloudSyncClient，让云轮询与局域网共享同一 LRU
+                self._cloud_client = CloudSyncClient(
+                    server, pair_code, sig_dedup_fn=self._check_and_record_sig
+                )
 
     # ---------- 服务端 ----------
 
@@ -292,8 +301,9 @@ class SyncHub(QObject):
         try:
             letters, server_ts = self._cloud_client.poll_letters(self._cloud_last_ts)
             if server_ts:
+                # 仅更新内存游标，延迟落盘：必须等所有信件处理完才保存，
+                # 否则中途崩溃会因游标已前进导致本批信件永久丢失。
                 self._cloud_last_ts = server_ts
-                self._save_cursor()
             for letter in letters:
                 self.on_received(
                     letter.get("meta", {}),
@@ -301,6 +311,10 @@ class SyncHub(QObject):
                     letter.get("attachment", b""),
                     letter.get("attachment_ext", ""),
                 )
+            # 所有信件处理完毕后再落盘游标，保证下次轮询不会跳过本批信件；
+            # 若 letters 为空但 server_ts 前进，也需保存游标。
+            if server_ts:
+                self._save_cursor()
         except Exception:
             log_exception("云轮询异常")
         finally:
@@ -324,6 +338,25 @@ class SyncHub(QObject):
         self._heartbeat_schedule()
 
     # ---------- 收信 ----------
+
+    def _check_and_record_sig(self, sig_b64: str) -> bool:
+        """签名 LRU 去重：首次见到返回 True 并记入 LRU，重复返回 False。
+
+        线程安全：on_received 在 socket 线程与云轮询线程中可能并发调用。
+        容量上限 1024，超出时按 LRU 弹出最久未见的签名。
+        空 sig_b64 不走 LRU（未配对模式无签名消息不应互相误杀），直接返回 True。
+        """
+        if not sig_b64:
+            return True
+        with self._sig_lock:
+            if sig_b64 in self._seen_sigs:
+                # 命中：移到末尾标记为最近使用（LRU），返回 False 表示重复
+                self._seen_sigs.move_to_end(sig_b64)
+                return False
+            self._seen_sigs[sig_b64] = None
+            if len(self._seen_sigs) > self._sig_lru_max:
+                self._seen_sigs.popitem(last=False)  # 弹出最旧
+            return True
 
     def on_received(
         self,
@@ -371,6 +404,17 @@ class SyncHub(QObject):
             if sender and sender == self._my_id:
                 return
 
+        # 签名 LRU 去重：仅当 meta 含 sig_b64 时才查 LRU。
+        # 未配对模式无签名消息跳过 LRU（避免空 sig_b64 互相误杀），由 message_id 幂等兜底。
+        sig_b64 = meta.get("sig_b64", "")
+        if sig_b64:
+            if not self._check_and_record_sig(sig_b64):
+                log_info(
+                    "收到重复签名消息，已丢弃（LRU 去重）: type=%s",
+                    meta.get("type", "letter"),
+                )
+                return
+
         msg_type = meta.get("type", "letter")
         if msg_type != "letter":
             self.event_received.emit(msg_type, meta, content, attachment or b"", att_ext)
@@ -387,6 +431,7 @@ class SyncHub(QObject):
             deliver_at=deliver_at,
             attachment_bytes=attachment or None,
             attachment_ext=att_ext,
+            message_id=meta.get("message_id"),
         )
         self.letter_received.emit(new_meta["id"])
 

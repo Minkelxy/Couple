@@ -29,10 +29,11 @@ def _load_sent() -> set[str]:
         return set()
 
 
-def _mark_sent(key: str) -> None:
+def _mark_sent(*keys: str) -> None:
     """原子写入 sent_log，先于 write_letter 调用（占坑语义：崩溃后也不重复）。"""
     s = _load_sent()
-    s.add(key)
+    for k in keys:
+        s.add(k)
     # 临时文件 + os.replace 原子写，避免半写文件下次启动当空重建
     tmp = _SENT_LOG.with_suffix(".tmp")
     tmp.write_text(json.dumps(sorted(s), ensure_ascii=False, indent=2),
@@ -57,12 +58,16 @@ def check_and_deliver() -> list[dict]:
             continue
         anniv_id = anniv.get("id") or anniv.get("date")
         key = f"{anniv_id}-{year}"
+        # 兜底稳定 key：基于 date + title，anniv_id 变更（编辑 id 或删除 id 回退 date）
+        # 后只要 date + title 不变仍能命中，防同年重复投递
+        stable_key = f"stable-{year}-{anniv.get('date')}-{anniv.get('title', '')}"
         # 多线程串行化 + 先占坑：先把 key 写入 sent_log，再落信
         # 崩溃/异常发生在中间：下一次启动 key 已在 sent_log 里，不会重复投递
         with _LOCK:
-            if key in _load_sent():
+            sent = _load_sent()
+            if key in sent or stable_key in sent:
                 continue
-            _mark_sent(key)
+            _mark_sent(key, stable_key)
         # 送达时间：当天指定小时，已过则立即
         try:
             hour = int(anniv.get("deliver_hour", 8))

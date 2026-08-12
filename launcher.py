@@ -416,7 +416,7 @@ def main() -> int:
                     gomoku_win = None
                 try:
                     _win.destroyed.connect(_clear_gomoku_ref)
-                    setattr(_win, "_destroyed", True)
+                    setattr(_win, "_destroyed", False)
                     _win.destroyed.connect(lambda *_: setattr(_win, "_destroyed", True))
                 except RuntimeError:
                     pass

@@ -17,15 +17,19 @@ class DueChecker(QObject):
         self._timer = QTimer(self)
         self._timer.setTimerType(Qt.VeryCoarseTimer)
         self._timer.timeout.connect(self._check)
+        # 启动时 _already_notified 初始为空集：
+        # 关机期间到期的未读信件，由首次 _check() 正常发 letters_due 通知，
+        # 而非被静默吞掉只更新托盘未读数。
+        # list_due_unread 已过滤 read==true，历史已读信件不会进入，无需特殊处理。
+        # _already_notified 仅用于运行期去重：信件通知一次后加入集合，
+        # 后续 QTimer 轮询不再重复通知同一封信。
         self._already_notified: set[str] = set()
-        # 初始化时把当前已存在的到期信件记入"已知"，避免启动瞬间弹一堆
-        for it in letter_store.list_due_unread():
-            self._already_notified.add(it["id"])
 
     def start(self) -> None:
         interval = max(10, config.load().get("check_interval_sec", 30)) * 1000
         self._timer.start(interval)
-        # 启动后立刻检查一次（不弹已知的，但能更新托盘未读数）
+        # 首次 _check() 由 QTimer 触发（此时 letters_due 已连好处理函数）：
+        # 关机期间到期的未读信件会正常弹通知。
 
     def _check(self) -> None:
         due = letter_store.list_due_unread()

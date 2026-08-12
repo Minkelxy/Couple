@@ -70,33 +70,48 @@ def write_letter(
     deliver_at: datetime,
     attachment_bytes: Optional[bytes] = None,
     attachment_ext: str = "",
+    message_id: Optional[str] = None,
 ) -> dict:
-    """落盘一封信，返回元数据。"""
-    letter_id = uuid.uuid4().hex[:12]
+    """落盘一封信，返回元数据。
+
+    message_id 非 None 时做幂等去重：若本地已存在同 message_id 的信件，
+    直接返回已有信件 meta，不再写入（用于同步消息防重复落盘）。
+    message_id 为 None（本地草稿、旧版同步消息）按原逻辑写入，不做去重。
+    """
     _LETTERS_DIR.mkdir(parents=True, exist_ok=True)
-
-    # 加密正文
-    enc_text = crypto.encrypt(content.encode("utf-8"))
-    (_LETTERS_DIR / f"{letter_id}.enc").write_bytes(enc_text)
-
-    meta = {
-        "id": letter_id,
-        "author": author,
-        "recipient": recipient,
-        "title": title,
-        "created_at": _now_iso(),
-        "deliver_at": deliver_at.isoformat(timespec="minutes"),
-        "read": False,
-        "has_attachment": attachment_bytes is not None,
-        "attachment_ext": attachment_ext,
-    }
-
-    if attachment_bytes is not None:
-        enc_att = crypto.encrypt(attachment_bytes)
-        (_LETTERS_DIR / f"{letter_id}_att.enc").write_bytes(enc_att)
 
     with _LOCK:
         items = _load_meta()
+        # 幂等去重：同 message_id 的信件已存在则跳过写入，直接返回已有 meta
+        if message_id is not None:
+            for it in items:
+                if it.get("message_id") == message_id:
+                    return it
+
+        letter_id = uuid.uuid4().hex[:12]
+
+        # 加密正文
+        enc_text = crypto.encrypt(content.encode("utf-8"))
+        (_LETTERS_DIR / f"{letter_id}.enc").write_bytes(enc_text)
+
+        meta = {
+            "id": letter_id,
+            "author": author,
+            "recipient": recipient,
+            "title": title,
+            "created_at": _now_iso(),
+            "deliver_at": deliver_at.isoformat(timespec="minutes"),
+            "read": False,
+            "has_attachment": attachment_bytes is not None,
+            "attachment_ext": attachment_ext,
+        }
+        if message_id is not None:
+            meta["message_id"] = message_id
+
+        if attachment_bytes is not None:
+            enc_att = crypto.encrypt(attachment_bytes)
+            (_LETTERS_DIR / f"{letter_id}_att.enc").write_bytes(enc_att)
+
         items.append(meta)
         _save_meta(items)
     return meta

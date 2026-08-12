@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import time
 import urllib.parse
 import urllib.request
 from typing import Optional
@@ -59,7 +60,11 @@ def search_movie(title: str) -> Optional[dict]:
         log_warning("playwright 未安装，无法抓取豆瓣")
         return None
 
-    try:
+    def _attempt_once() -> Optional[dict]:
+        """单次抓取尝试：启动浏览器、加载页面、提取首个结果。
+
+        每次调用都重新启动 playwright 与浏览器实例，避免复用已关闭的 browser。
+        """
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             try:
@@ -85,9 +90,31 @@ def search_movie(title: str) -> Optional[dict]:
                 }
             finally:
                 browser.close()
-    except Exception:
-        log_exception("豆瓣搜索失败: %s", title)
+
+    # 指数退避重试：最多重试 2 次（总共 3 次尝试），间隔 1s、2s 递增
+    # 触发重试条件：网络异常 或 解析结果为空（豆瓣风控常返回空页面）
+    max_retries = 2
+    for attempt in range(max_retries + 1):
+        if attempt > 0:
+            # 第 1 次重试前等 1s，第 2 次重试前等 2s
+            time.sleep(attempt)
+        try:
+            result = _attempt_once()
+        except Exception:
+            # 网络异常（playwright timeout、连接错误等）→ 重试
+            if attempt < max_retries:
+                log_warning("豆瓣搜索网络异常，将重试（第 %d 次）: %s", attempt, title)
+                continue
+            log_exception("豆瓣搜索失败: %s", title)
+            return None
+        if result is not None:
+            return result
+        # 空结果（可能是风控空页面）→ 重试
+        if attempt < max_retries:
+            log_warning("豆瓣搜索无结果，将重试（第 %d 次）: %s", attempt, title)
+            continue
         return None
+    return None
 
 
 def download_poster(url: str, douban_id: str) -> Optional[str]:
@@ -103,7 +130,11 @@ def download_poster(url: str, douban_id: str) -> Optional[str]:
     safe_id = safe_filename(douban_id, fallback="poster")
     dest = posters_dir / f"{safe_id}.jpg"
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
+        req = urllib.request.Request(url, headers={
+            "User-Agent": _USER_AGENT,
+            # Referer 指向豆瓣电影主站，降低海报 CDN 403 概率
+            "Referer": "https://movie.douban.com/",
+        })
         with urllib.request.urlopen(req, timeout=_PAGE_TIMEOUT_MS / 1000) as resp:
             # 分块读取，超限则中止，避免一次性 read() 撑爆内存
             chunks: list[bytes] = []

@@ -8,7 +8,10 @@ from PySide6.QtWidgets import QVBoxLayout, QWidget
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 
+from . import store
+
 PINK = "#e65a7a"
+PARTNER_BLUE = "#3a7bd5"
 # Y 轴从下到上：1😴 2😡 3😢 4😍 5😊
 # matplotlib 在 Windows 默认 YaHei 缺 emoji 字形会刷警告，
 # 故 y 轴只用纯中文标签 + 颜色区分心情；emoji 保留在 Qt 控件里展示
@@ -49,25 +52,42 @@ class MoodChart(QWidget):
         ax.grid(True, linestyle="--", alpha=0.3, color="#ccc")
 
     def update_data(self, records: list[dict]) -> None:
-        """用 records 列表刷新图表。
+        """用 records 列表刷新图表，同时绘制自己与对方两条折线。
 
-        records: [{'date':'YYYY-MM-DD','mood':1-5}, ...]
+        records: [{'date':'YYYY-MM-DD','mood':1-5}, ...]（自己的记录）
+        对方记录由 store.get_partner_recent 读取。仅一方有数据时只画一方；
+        双方均无数据时清空图表不报错。
         """
         self._ax.clear()
         self._setup_ax()
-        if not records:
+        # 自己与对方数据，按日期升序
+        mine = sorted(records, key=lambda r: r["date"]) if records else []
+        partner = sorted(store.get_partner_recent(30), key=lambda r: r["date"])
+        if not mine and not partner:
             self._ax.set_title("暂无打卡记录", color="#999", fontsize=12)
             self._fig.tight_layout()
             self._canvas.draw()
             return
-        items = sorted(records, key=lambda r: r["date"])
-        dates = [datetime.strptime(r["date"], "%Y-%m-%d") for r in items]
-        moods = [r["mood"] for r in items]
-        self._ax.plot(
-            dates, moods, color=PINK, marker="o", markersize=6,
-            linewidth=2, markerfacecolor=PINK, markeredgecolor="white",
-        )
+        # 自己：粉色圆点
+        if mine:
+            dates = [datetime.strptime(r["date"], "%Y-%m-%d") for r in mine]
+            moods = [r["mood"] for r in mine]
+            self._ax.plot(
+                dates, moods, color=PINK, marker="o", markersize=6,
+                linewidth=2, markerfacecolor=PINK, markeredgecolor="white",
+                label="我",
+            )
+        # 对方：蓝色方块
+        if partner:
+            p_dates = [datetime.strptime(r["date"], "%Y-%m-%d") for r in partner]
+            p_moods = [r["mood"] for r in partner]
+            self._ax.plot(
+                p_dates, p_moods, color=PARTNER_BLUE, marker="s", markersize=6,
+                linewidth=2, markerfacecolor=PARTNER_BLUE, markeredgecolor="white",
+                label="对方",
+            )
         self._ax.set_title("最近心情趋势", color=PINK, fontsize=13)
+        self._ax.legend(loc="upper left", fontsize=10)
         self._fig.autofmt_xdate(rotation=30)
         self._fig.tight_layout()
         self._canvas.draw()

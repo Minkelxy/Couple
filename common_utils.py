@@ -4,8 +4,11 @@
 """
 from __future__ import annotations
 
+import json
 import logging
+import os
 import re
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -155,6 +158,67 @@ def check_attachment_size(data: bytes) -> Optional[str]:
         limit_mb = MAX_ATTACHMENT_BYTES / (1024 * 1024)
         return f"附件过大（{mb:.1f} MB > 上限 {limit_mb:.0f} MB），已拒绝"
     return None
+
+
+# ---------- 原子写 JSON 存储 ----------
+
+
+class AtomicJsonStore:
+    """线程安全的原子写 JSON 存储。
+
+    使用临时文件 + os.replace 保证写入原子性,模块级锁串行化读改写。
+    顶层可以是 dict 或 list(default 决定)。
+    """
+
+    def __init__(self, path, default=None):
+        # path: Path 对象;default: 文件不存在/损坏时的默认值(通常 {} 或 [])
+        self.path = Path(path)
+        self.default = {} if default is None else default
+        self._lock = threading.Lock()
+
+    def load(self):
+        """加载 JSON,文件不存在或损坏返回 default(并 log_warning)。"""
+        if not self.path.exists():
+            return self.default
+        try:
+            return json.loads(self.path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as e:
+            log_warning("JSON 文件损坏,返回默认值 %s: %s", self.path, e)
+            return self.default
+        except OSError as e:
+            log_warning("JSON 文件读取失败,返回默认值 %s: %s", self.path, e)
+            return self.default
+
+    def save(self, data):
+        """原子写入:写临时文件 .tmp -> os.replace 覆盖目标。"""
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.path.with_suffix(self.path.suffix + ".tmp")
+        tmp.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        os.replace(str(tmp), str(self.path))
+
+    def update(self, **kwargs):
+        """读改写:load -> update dict -> save。加锁串行化。"""
+        with self._lock:
+            data = self.load()
+            if not isinstance(data, dict):
+                # 顶层非 dict(如 list)无法 update,退化为空 dict
+                data = {}
+            data.update(kwargs)
+            self.save(data)
+            return data
+
+    def get(self, key, default=None):
+        """读取单个 key(仅 dict 顶层有意义)。"""
+        data = self.load()
+        if isinstance(data, dict):
+            return data.get(key, default)
+        return default
+
+    def set(self, key, value):
+        """等价于 update 单个 key。"""
+        return self.update(**{key: value})
 
 
 # ---------- 错误文案翻译 ----------

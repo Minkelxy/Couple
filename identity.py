@@ -21,6 +21,7 @@ import hashlib
 import json
 import secrets
 import threading
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -255,10 +256,17 @@ def sign_message(meta: dict, content: str, attachment: bytes, att_ext: str) -> d
     """为一条同步消息计算签名并注入 meta。返回新的 meta 字典（不修改入参）。
 
     注入字段：
-      pk_fp   : 发送方公钥指纹（接收端据此判断"是不是我认识的对方"，但验签用 partner_pk 硬校验）
-      sig_b64 : Ed25519 签名 base64url
+      pk_fp      : 发送方公钥指纹（接收端据此判断"是不是我认识的对方"，但验签用 partner_pk 硬校验）
+      sig_b64    : Ed25519 签名 base64url
+      nonce      : 16 字符随机串，防重放（同一消息每次签名都不同，使摘要不可复用）
+      message_id : UUID 字符串，接收端据此做幂等去重，避免同一封信重复落盘
     """
     new_meta = dict(meta)
+    # 防重放与幂等：nonce 保证同一内容每次签名摘要不同，message_id 供接收端去重。
+    # 二者必须在 _signing_digest 调用前写入，使其参与签名；接收端 verify_message
+    # 时 meta 已含这两个字段，签名自动覆盖，无需额外校验逻辑。
+    new_meta["nonce"] = secrets.token_hex(8)
+    new_meta["message_id"] = str(uuid.uuid4())
     pk_bytes, sk = ensure_identity()
     digest = _signing_digest(new_meta, content, attachment or b"", att_ext or "")
     sig_bytes = sk.sign(digest)

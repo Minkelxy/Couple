@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Optional
 
 import app_paths
-from common_utils import log_warning
+from common_utils import AtomicJsonStore, log_warning
 
 DB_PATH = app_paths.MOVIES_DIR / "movies.db"
 
@@ -142,6 +142,8 @@ init_db()
 # ===== 对方状态（partner_status）：独立 JSON 持久化 =====
 # movie_id(str) -> {"status": "want"/"watching"/"watched"/None, "rating": int|None}
 PARTNER_STATUS_FILE = app_paths.MOVIES_DIR / "partner_status.json"
+# 对方状态原子写存储
+_partner_status_store = AtomicJsonStore(PARTNER_STATUS_FILE, default={})
 
 
 def _load_partner_status() -> dict:
@@ -155,10 +157,7 @@ def _load_partner_status() -> dict:
 
 
 def _save_partner_status(data: dict) -> None:
-    app_paths.MOVIES_DIR.mkdir(parents=True, exist_ok=True)
-    PARTNER_STATUS_FILE.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    _partner_status_store.save(data)
 
 
 def set_partner_status(movie_id, status, rating) -> None:
