@@ -6,10 +6,11 @@ GalleryGridWindow: 4 列缩略图网格，顶部相册下拉切换，双击全�
 from __future__ import annotations
 
 import time
+import random
 from pathlib import Path
 
 import app_paths
-from PIL import Image, ImageOps
+from PIL import Image, ImageEnhance, ImageOps
 from PySide6.QtCore import (
     QEasingCurve,
     QObject,
@@ -23,6 +24,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QAction, QIcon, QPixmap, QWheelEvent
 from PySide6.QtWidgets import (
     QComboBox,
+    QCheckBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -33,6 +35,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QLineEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -49,6 +52,19 @@ from . import config
 from . import image_processor as ip
 
 PINK = "#e65a7a"
+
+
+def _apply_gallery_effect(img: Image.Image, mode: str) -> Image.Image:
+    """Apply a lightweight preview effect without changing the source file."""
+    img = img.convert("RGBA")
+    if mode == "mono":
+        return ImageOps.grayscale(img).convert("RGBA")
+    if mode == "warm":
+        img = ImageEnhance.Color(img).enhance(1.12)
+        img = ImageEnhance.Contrast(img).enhance(1.06)
+        overlay = Image.new("RGBA", img.size, (255, 170, 80, 34))
+        return Image.alpha_composite(img, overlay)
+    return img
 
 
 def _stop_anim(anim: QPropertyAnimation | None) -> None:
@@ -83,7 +99,7 @@ class GalleryWindow(QMainWindow):
 
     show_grid_requested = Signal()
 
-    def __init__(self, image_dir: str, start_index: int = 0) -> None:
+    def __init__(self, image_dir: str, start_index: int = 0, interval_sec: int = 5) -> None:
         super().__init__()
         self.setWindowFlags(
             Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
@@ -93,12 +109,13 @@ class GalleryWindow(QMainWindow):
         self._images: list[Path] = ip.list_images(image_dir)
         self._index = max(0, min(start_index, len(self._images) - 1)) if self._images else 0
         self._zoom = 1.0
+        self._effect_mode = "normal"
         self._fade_anim: QPropertyAnimation | None = None
         # 自动播放（幻灯片）
         self._auto_play = False
         self._auto_timer = QTimer(self)
         self._auto_timer.setTimerType(Qt.CoarseTimer)
-        self._auto_timer.setInterval(5000)  # 5 秒切一张
+        self._auto_timer.setInterval(max(3, int(interval_sec)) * 1000)
         self._auto_timer.timeout.connect(self.show_next)
         # 信息浮层引用（按需创建）
         self._info_label: QLabel | None = None
@@ -143,22 +160,25 @@ class GalleryWindow(QMainWindow):
         )
         tb_layout = QHBoxLayout(self._toolbar)
         tb_layout.setContentsMargins(16, 10, 16, 10)
+        btn_effect = QPushButton("Effect: Normal")
         btn_prev = QPushButton("← 上一张")
         btn_play = QPushButton("▶ 自动播放")
         btn_next = QPushButton("下一张 →")
         btn_info = QPushButton("ℹ 信息")
         btn_grid = QPushButton("🗂 网格")
         btn_exit = QPushButton("✕ 退出")
-        for btn in (btn_prev, btn_play, btn_next, btn_info, btn_grid, btn_exit):
+        for btn in (btn_prev, btn_play, btn_next, btn_info, btn_effect, btn_grid, btn_exit):
             tb_layout.addWidget(btn)
         tb_layout.addStretch(1)
         btn_prev.clicked.connect(self.show_prev)
         btn_play.clicked.connect(self._toggle_auto_play)
         btn_next.clicked.connect(self.show_next)
         btn_info.clicked.connect(self._toggle_info)
+        btn_effect.clicked.connect(self._cycle_effect)
         btn_grid.clicked.connect(self._on_grid)
         btn_exit.clicked.connect(self.close)
         self._btn_play = btn_play
+        self._btn_effect = btn_effect
         self._toolbar.setParent(central)
         self._toolbar.move(0, 0)
         self._toolbar.setFixedWidth(self.width())
@@ -190,7 +210,9 @@ class GalleryWindow(QMainWindow):
         try:
             with Image.open(src) as src_img:
                 src_img.load()
-                img = ImageOps.exif_transpose(src_img).copy()
+                img = _apply_gallery_effect(
+                    ImageOps.exif_transpose(src_img).copy(), self._effect_mode
+                )
         except Exception:
             log_exception("画廊加载图片失败: %s", src)
             self._label.setText(f"无法加载：{src.name}")
@@ -257,6 +279,13 @@ class GalleryWindow(QMainWindow):
             self._btn_play.setText("▶ 自动播放")
 
     # ---------- 信息浮层 ----------
+    def _cycle_effect(self) -> None:
+        modes = ("normal", "warm", "mono")
+        self._effect_mode = modes[(modes.index(self._effect_mode) + 1) % len(modes)]
+        labels = {"normal": "Effect: Normal", "warm": "Effect: Warm", "mono": "Effect: Mono"}
+        self._btn_effect.setText(labels[self._effect_mode])
+        self._show_current()
+
     def _toggle_info(self) -> None:
         if self._info_label is None:
             return
@@ -415,6 +444,9 @@ class GalleryGridWindow(QMainWindow):
         self._share_worker: _ShareWorker | None = None
         # 当前网格的图片列表（与 thumb index 对齐）
         self._grid_images: list[Path] = []
+        self._search_text = ""
+        self._favorites_only = False
+        self._sort_mode = "name"
         # 保留 _hub_event_conn 字段：用于向后兼容（当前版本事件由 launcher
         # 统一路由，窗口不再自行订阅 event_received，避免同一张照片被重复
         # 处理两次——launcher.on_event_received 中已经调用了 handle_photo_partner_event）。
@@ -452,6 +484,22 @@ class GalleryGridWindow(QMainWindow):
         )
         self._album_combo.currentIndexChanged.connect(self._on_album_changed)
         top_row.addWidget(self._album_combo, 1)
+        self._search = QLineEdit()
+        self._search.setPlaceholderText("Search photos")
+        self._search.setClearButtonEnabled(True)
+        self._search.setMaximumWidth(220)
+        self._search.textChanged.connect(self._on_search_changed)
+        top_row.addWidget(self._search)
+        self._sort_combo = QComboBox()
+        self._sort_combo.addItem("Name", "name")
+        self._sort_combo.addItem("Newest", "newest")
+        self._sort_combo.addItem("Oldest", "oldest")
+        self._sort_combo.addItem("Random", "random")
+        self._sort_combo.currentIndexChanged.connect(self._on_sort_changed)
+        top_row.addWidget(self._sort_combo)
+        self._favorites_check = QCheckBox("Favorites")
+        self._favorites_check.toggled.connect(self._on_favorites_changed)
+        top_row.addWidget(self._favorites_check)
         layout.addLayout(top_row)
 
         # 网格
@@ -506,6 +554,18 @@ class GalleryGridWindow(QMainWindow):
     def _on_album_changed(self, _idx: int) -> None:
         self._refresh_grid()
 
+    def _on_search_changed(self, text: str) -> None:
+        self._search_text = text.strip().casefold()
+        self._refresh_grid()
+
+    def _on_sort_changed(self, _idx: int) -> None:
+        self._sort_mode = self._sort_combo.currentData() or "name"
+        self._refresh_grid()
+
+    def _on_favorites_changed(self, checked: bool) -> None:
+        self._favorites_only = checked
+        self._refresh_grid()
+
     def _stop_thumb_worker(self) -> None:
         """请求停止并清理旧 thumb worker。"""
         if self._thumb_worker is not None:
@@ -525,6 +585,17 @@ class GalleryGridWindow(QMainWindow):
         self._grid.clear()
         path = self._album_combo.currentData() or ""
         images = ip.list_images(path)
+        if self._search_text:
+            images = [img for img in images if self._search_text in img.name.casefold()]
+        if self._favorites_only:
+            favorites = set(config.list_favorites())
+            images = [img for img in images if str(img) in favorites]
+        if self._sort_mode == "newest":
+            images.sort(key=lambda img: img.stat().st_mtime, reverse=True)
+        elif self._sort_mode == "oldest":
+            images.sort(key=lambda img: img.stat().st_mtime)
+        elif self._sort_mode == "random":
+            random.shuffle(images)
         self._grid_images = images
         if not images:
             item = QListWidgetItem("📭 把照片放到这个目录就会显示在这里\n" + path)
@@ -572,7 +643,9 @@ class GalleryGridWindow(QMainWindow):
         if self._gallery_win is not None:
             self._gallery_win.close()
         self._gallery_win = GalleryWindow(
-            self._album_combo.currentData() or "", start_index=idx
+            self._album_combo.currentData() or "",
+            start_index=idx,
+            interval_sec=config.load().get("interval_sec", 5),
         )
         self._gallery_win.destroyed.connect(lambda *_: setattr(self, "_gallery_win", None))
         self._gallery_win.show()
@@ -581,8 +654,19 @@ class GalleryGridWindow(QMainWindow):
     def _on_grid_context_menu(self, pos) -> None:
         """右键菜单：共享当前相册给对方。"""
         menu = QMenu(self)
+        item = self._grid.itemAt(pos)
+        act_favorite = None
+        if item is not None:
+            path_str = item.data(Qt.UserRole)
+            if path_str:
+                act_favorite = menu.addAction(
+                    "Remove favorite" if config.is_favorite(path_str) else "Add favorite"
+                )
         act_share = menu.addAction("共享给对方")
         chosen = menu.exec(self._grid.mapToGlobal(pos))
+        if chosen is act_favorite and item is not None:
+            config.toggle_favorite(item.data(Qt.UserRole))
+            self._refresh_grid()
         if chosen is act_share:
             self._share_current_album()
 
