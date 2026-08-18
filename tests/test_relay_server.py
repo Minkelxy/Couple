@@ -16,6 +16,27 @@ class RelayPollingTests(unittest.TestCase):
         self.assertEqual(declared.status_code, 400)
         self.assertEqual(confirmed.status_code, 400)
 
+    def test_pairing_endpoints_reject_wrong_field_types(self):
+        client = relay_server.app.test_client()
+
+        declared = client.post(
+            "/api/pairing/declare",
+            json={"token": [], "role": "host", "pk_b64": "", "nickname": ""},
+        )
+        confirmed = client.post(
+            "/api/pairing/confirm",
+            json={
+                "token": "ABC234",
+                "role": "host",
+                "my_nonce": "nonce",
+                "sig_b64": "sig",
+                "safety_confirmed": "true",
+            },
+        )
+
+        self.assertEqual(declared.status_code, 400)
+        self.assertEqual(confirmed.status_code, 400)
+
     def test_messages_created_after_empty_poll_are_not_skipped(self):
         with tempfile.TemporaryDirectory() as tmp:
             original_db_path = relay_server._DB_PATH

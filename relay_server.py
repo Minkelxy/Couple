@@ -232,15 +232,27 @@ def _pairing_expire_locked() -> None:
         del _PAIRING[t]
 
 
+def _clean_text(value) -> str | None:
+    """Return stripped request text, or None when the field has a wrong type."""
+    return value.strip() if isinstance(value, str) else None
+
+
 @app.route("/api/pairing/declare", methods=["POST"])
 def api_pairing_declare() -> tuple:
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         return jsonify({"ok": False, "message": "JSON body 必须是对象"}), 400
-    token = (data.get("token") or "").strip().upper()
-    role = (data.get("role") or "").strip().lower()
-    pk_b64 = (data.get("pk_b64") or "").strip()
-    nickname = (data.get("nickname") or "").strip()[:40]
+    token_raw = _clean_text(data.get("token"))
+    role_raw = _clean_text(data.get("role"))
+    pk_raw = _clean_text(data.get("pk_b64"))
+    nickname_raw = data.get("nickname", "")
+    nickname_raw = "" if nickname_raw is None else _clean_text(nickname_raw)
+    if token_raw is None or role_raw is None or pk_raw is None or nickname_raw is None:
+        return jsonify({"ok": False, "message": "字段类型非法"}), 400
+    token = token_raw.upper()
+    role = role_raw.lower()
+    pk_b64 = pk_raw
+    nickname = nickname_raw[:40]
     if len(token) != 6 or not re.fullmatch(r"[A-HJ-NP-Z2-9]{6}", token):
         return jsonify({"ok": False, "message": "token 格式必须是 6 位不含 I/L/0/O 的字母数字"}), 400
     if role not in ("host", "guest"):
@@ -327,11 +339,17 @@ def api_pairing_confirm() -> tuple:
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         return jsonify({"ok": False, "message": "JSON body 必须是对象"}), 400
-    token = (data.get("token") or "").strip().upper()
-    role = (data.get("role") or "").strip().lower()
-    my_nonce = (data.get("my_nonce") or "").strip()
-    sig_b64 = (data.get("sig_b64") or "").strip()
-    safety_confirmed = bool(data.get("safety_confirmed"))
+    token_raw = _clean_text(data.get("token"))
+    role_raw = _clean_text(data.get("role"))
+    nonce_raw = _clean_text(data.get("my_nonce"))
+    sig_raw = _clean_text(data.get("sig_b64"))
+    if None in (token_raw, role_raw, nonce_raw, sig_raw):
+        return jsonify({"ok": False, "message": "字段类型非法"}), 400
+    token = token_raw.upper()
+    role = role_raw.lower()
+    my_nonce = nonce_raw
+    sig_b64 = sig_raw
+    safety_confirmed = data.get("safety_confirmed") is True
     if len(token) != 6 or role not in ("host", "guest"):
         return jsonify({"ok": False, "message": "token/role 非法"}), 400
     if not safety_confirmed:
