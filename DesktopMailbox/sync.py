@@ -39,6 +39,7 @@ DEFAULT_PORT = 52014
 # 防御性上限：header JSON 不应过大；正文（文本）也需有界
 _MAX_HEADER_BYTES = 64 * 1024
 _MAX_CONTENT_BYTES = 1 * 1024 * 1024
+_MAX_ATTACHMENT_EXT_BYTES = 32
 
 
 def _ensure_uuid(cfg_dir: Path) -> str:
@@ -61,12 +62,12 @@ def _ensure_uuid(cfg_dir: Path) -> str:
     return uid
 
 
-def _recv_exact(sock: socket.socket, n: int) -> bytes:
+def _recv_exact(sock: socket.socket, n: int) -> bytes | None:
     buf = b""
     while len(buf) < n:
         chunk = sock.recv(min(n - len(buf), 65536))
         if not chunk:
-            return b""
+            return None
         buf += chunk
     return buf
 
@@ -452,9 +453,19 @@ def _make_handler(hub: SyncHub):
                 if not hdr_b:
                     return
                 header = json.loads(hdr_b.decode("utf-8"))
+                if not isinstance(header, dict):
+                    log_warning("同步 header 不是对象，关闭连接")
+                    return
                 meta = header["meta"]
+                if not isinstance(meta, dict):
+                    log_warning("同步 meta 不是对象，关闭连接")
+                    return
                 content_len = int(header.get("content_len", 0))
                 att_len = int(header.get("attachment_len", 0))
+                att_ext = header.get("attachment_ext", "")
+                if not isinstance(att_ext, str) or len(att_ext) > _MAX_ATTACHMENT_EXT_BYTES:
+                    log_warning("同步附件扩展名非法，关闭连接")
+                    return
                 # 防御：限制正文与附件大小，防止恶意/异常大包 OOM
                 if content_len < 0 or content_len > _MAX_CONTENT_BYTES:
                     log_warning("拒绝超大正文（%d 字节），关闭连接", content_len)
@@ -463,12 +474,18 @@ def _make_handler(hub: SyncHub):
                     log_warning("拒绝超大附件（%d 字节），关闭连接", att_len)
                     return
                 content_b = _recv_exact(self.request, content_len)
+                if content_b is None:
+                    log_warning("同步正文未接收完整，丢弃连接")
+                    return
                 content = content_b.decode("utf-8")
                 att = b""
                 if att_len:
                     att = _recv_exact(self.request, att_len)
+                    if att is None:
+                        log_warning("同步附件未接收完整，丢弃连接")
+                        return
                 hub.on_received(
-                    meta, content, att, header.get("attachment_ext", "")
+                    meta, content, att, att_ext
                 )
             except Exception:
                 # 单次连接失败不影响服务端，但记录便于排查
