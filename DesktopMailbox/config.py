@@ -1,14 +1,15 @@
 """配置管理：两个角色名 + 数据目录。"""
 from __future__ import annotations
 
-import json
+from copy import deepcopy
 from pathlib import Path
 
 import app_paths
-from common_utils import log_warning
+from common_utils import AtomicJsonStore
 
 CONFIG_PATH = app_paths.CONFIG_DIR / "mailbox.json"
 DATA_DIR = app_paths.DATA_DIR
+_STORE = AtomicJsonStore(CONFIG_PATH, {})
 
 DEFAULTS = {
     "my_name": "我",
@@ -47,28 +48,28 @@ DEFAULTS = {
 
 
 def load() -> dict:
-    data = dict(DEFAULTS)
-    if CONFIG_PATH.exists():
-        try:
-            data.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
-        except (json.JSONDecodeError, OSError) as e:
-            log_warning("邮箱配置加载失败，使用默认值: %s", e)
+    data = deepcopy(DEFAULTS)
+    stored = _STORE.load()
+    if isinstance(stored, dict):
+        data.update(stored)
     anniv = data.get("anniversaries", [])
     data["anniversaries"] = anniv if isinstance(anniv, list) else []
     return data
 
 
 def save(data: dict) -> None:
-    CONFIG_PATH.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    _STORE.save(data)
 
 
 def update(**kwargs) -> dict:
-    data = load()
-    data.update(kwargs)
-    save(data)
-    return data
+    data = _STORE.load()
+    if not isinstance(data, dict):
+        data = {}
+    merged = deepcopy(DEFAULTS)
+    merged.update(data)
+    merged.update(kwargs)
+    _STORE.save(merged)
+    return merged
 
 
 def ensure_dirs() -> None:
