@@ -12,6 +12,7 @@ from typing import Optional
 import app_paths
 from common_utils import (
     MAX_ATTACHMENT_BYTES,
+    atomic_write_bytes,
     log_exception,
     log_warning,
     safe_filename,
@@ -151,7 +152,7 @@ def download_poster(url: str, douban_id: str) -> Optional[str]:
             data = b"".join(chunks)
         if not data:
             return None
-        dest.write_bytes(data)
+        atomic_write_bytes(dest, data)
         return str(dest)
     except Exception:
         log_exception("下载海报失败: %s", url)
