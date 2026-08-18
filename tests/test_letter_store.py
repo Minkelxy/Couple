@@ -42,6 +42,36 @@ class LetterStorePersistenceTests(unittest.TestCase):
                 letter_store._LETTERS_DIR = original_dir
                 letter_store._META_STORE = original_store
 
+    def test_queries_ignore_malformed_metadata_records(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_store = letter_store._META_STORE
+            letter_store._META_STORE = AtomicJsonStore(Path(tmp) / "mailbox.json", [])
+            valid_id = "a" * 12
+            try:
+                letter_store._META_STORE.save([
+                    {
+                        "id": valid_id,
+                        "deliver_at": datetime.now().isoformat(timespec="minutes"),
+                        "read": False,
+                        "title": "valid",
+                    },
+                    {"id": "bad", "deliver_at": "not-a-date", "read": False},
+                    {"id": "../escape", "deliver_at": "2026-01-01T00:00", "read": False},
+                    {"id": "b" * 12, "deliver_at": "2099-01-01T00:00", "read": "yes"},
+                ])
+
+                self.assertEqual(
+                    [item["id"] for item in letter_store.list_letters()], [valid_id]
+                )
+                self.assertEqual(
+                    [item["id"] for item in letter_store.list_due_unread()], [valid_id]
+                )
+                letter_store.mark_read(valid_id)
+                letter_store.delete_letter(valid_id)
+                self.assertEqual(letter_store.list_letters(), [])
+            finally:
+                letter_store._META_STORE = original_store
+
 
 if __name__ == "__main__":
     unittest.main()

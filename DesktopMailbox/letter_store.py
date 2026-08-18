@@ -43,7 +43,31 @@ def _safe_id(letter_id: str) -> bool:
 
 def _load_meta() -> list[dict]:
     data = _META_STORE.load()
-    return [item for item in data if isinstance(item, dict)] if isinstance(data, list) else []
+    if not isinstance(data, list):
+        return []
+    valid: list[dict] = []
+    for raw in data:
+        if not isinstance(raw, dict):
+            continue
+        letter_id = raw.get("id")
+        if not isinstance(letter_id, str) or not _safe_id(letter_id):
+            continue
+        deliver_at = raw.get("deliver_at")
+        if not isinstance(deliver_at, str):
+            continue
+        try:
+            parsed = datetime.fromisoformat(deliver_at)
+        except ValueError:
+            continue
+        # Keep comparisons deterministic even if an imported record has a timezone.
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone().replace(tzinfo=None)
+        item = dict(raw)
+        item["deliver_at"] = parsed.isoformat(timespec="minutes")
+        if not isinstance(item.get("read"), bool):
+            item["read"] = False
+        valid.append(item)
+    return valid
 
 
 def _save_meta(items: list[dict]) -> None:
@@ -167,7 +191,7 @@ def mark_read(letter_id: str) -> None:
     with _LOCK:
         items = _load_meta()
         for it in items:
-            if it["id"] == letter_id:
+            if it.get("id") == letter_id:
                 it["read"] = True
                 break
         _save_meta(items)
@@ -179,7 +203,7 @@ def delete_letter(letter_id: str) -> None:
         return
     with _LOCK:
         items = _load_meta()
-        items = [it for it in items if it["id"] != letter_id]
+        items = [it for it in items if it.get("id") != letter_id]
         _save_meta(items)
     for suffix in (".enc", "_att.enc"):
         p = _LETTERS_DIR / f"{letter_id}{suffix}"
