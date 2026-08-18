@@ -29,7 +29,14 @@ from PySide6.QtCore import QObject, Signal
 
 import app_paths
 import identity as idm
-from common_utils import AtomicJsonStore, MAX_ATTACHMENT_BYTES, log_exception, log_info, log_warning
+from common_utils import (
+    AtomicJsonStore,
+    MAX_ATTACHMENT_BYTES,
+    atomic_write_bytes,
+    log_exception,
+    log_info,
+    log_warning,
+)
 
 from . import letter_store
 from .cloud_sync import CloudSyncClient
@@ -56,7 +63,7 @@ def _ensure_uuid(cfg_dir: Path) -> str:
     uid = uuid.uuid4().hex[:16]
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(uid, encoding="utf-8")
+        atomic_write_bytes(path, uid.encode("ascii"))
     except OSError:
         pass
     return uid
