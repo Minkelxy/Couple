@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 import app_paths
 from common_utils import (
     atomic_copy_file,
+    atomic_write_bytes,
     check_attachment_size,
     log_warning,
     safe_filename,
@@ -86,7 +87,7 @@ def handle_partner_event(meta: dict, content: str, attachment: bytes,
             dest_dir.mkdir(parents=True, exist_ok=True)
             dest = dest_dir / filename
             try:
-                dest.write_bytes(attachment)
+                atomic_write_bytes(dest, attachment)
                 photo_filename = f"partner_photos/{filename}"
             except OSError:
                 log_warning("写入对方旅行照片失败: %s", filename)

@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 import app_paths
 from common_utils import (
     atomic_copy_file,
+    atomic_write_bytes,
     check_attachment_size,
     log_warning,
     safe_filename,
@@ -68,7 +69,7 @@ def _save_partner_image(attachment: bytes, att_ext: str, date_str: str) -> str:
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / filename
     try:
-        dest.write_bytes(attachment)
+        atomic_write_bytes(dest, attachment)
         return filename
     except OSError:
         log_warning("写入对方打卡图片失败: %s", filename)
