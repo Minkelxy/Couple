@@ -37,6 +37,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import json
 import re
@@ -69,6 +70,7 @@ _MAX_SINCE_LEN = 64
 _POLL_BATCH_LIMIT = 1000  # 单次 poll 最多返回 1000 封，避免断网很久回来的 OOM
 # 整个请求体大小上限：content 2MB + attach 100MB + meta 64KB + pair_code 128B + 余量
 _MAX_REQUEST_BYTES = 110 * 1024 * 1024
+_MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
 app.config["MAX_CONTENT_LENGTH"] = _MAX_REQUEST_BYTES
 
 # pair_code / channel_id 白名单：字母、数字、下划线、短横线（hex 也合法）
@@ -113,6 +115,16 @@ def _is_valid_pk_b64(pk_b64: str) -> bool:
         return True
     except Exception:
         return False
+
+
+def _validate_payload_b64(content_b64: str, attach_b64: str) -> bool:
+    try:
+        content = base64.b64decode(content_b64, validate=True)
+        attachment = base64.b64decode(attach_b64, validate=True)
+        content.decode("utf-8")
+    except (ValueError, UnicodeDecodeError, binascii.Error):
+        return False
+    return len(attachment) <= _MAX_ATTACHMENT_BYTES
 
 
 def _verify_sig(pk_b64: str, sig_b64: str, plain: bytes) -> bool:
@@ -477,6 +489,8 @@ def api_send() -> tuple:
         return jsonify({"ok": False, "error": "content too large"}), 413
     if len(attach_ext) > _MAX_ATTACH_EXT_LEN:
         return jsonify({"ok": False, "error": "attachment_ext too long"}), 400
+    if not _validate_payload_b64(content_b64, attach_b64):
+        return jsonify({"ok": False, "error": "invalid base64 payload"}), 400
     meta_str = _dumps(meta)
     if len(meta_str.encode("utf-8")) > _MAX_META_B64_LEN:
         return jsonify({"ok": False, "error": "meta too large"}), 413
