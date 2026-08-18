@@ -117,6 +117,12 @@ def _ensure_default_album_entry(albums: list[dict]) -> list[dict]:
     """
     if not isinstance(albums, list):
         albums = []
+    albums = [
+        album for album in albums
+        if isinstance(album, dict)
+        and isinstance(album.get("path"), str)
+        and album["path"]
+    ]
     default_path = str(app_paths.IMAGES_DIR)
     if any(isinstance(a, dict) and str(a.get("path", "")) == default_path for a in albums):
         return albums
@@ -146,7 +152,12 @@ def load() -> dict:
     data["anniversaries"] = anniv if isinstance(anniv, list) else []
     data["albums"] = _ensure_default_album_entry(data.get("albums", []))
     partner_albums = data.get("partner_albums", [])
-    data["partner_albums"] = partner_albums if isinstance(partner_albums, list) else []
+    data["partner_albums"] = [
+        album for album in partner_albums
+        if isinstance(album, dict)
+        and isinstance(album.get("path"), str)
+        and album["path"]
+    ] if isinstance(partner_albums, list) else []
     # favorites 类型校正：必须是字符串列表
     favs = data.get("favorites", [])
     if not isinstance(favs, list):

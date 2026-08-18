@@ -44,6 +44,34 @@ class PhotoFrameConfigTests(unittest.TestCase):
             finally:
                 config._store = original_store
 
+    def test_load_filters_malformed_album_entries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_store = config._store
+            config._store = AtomicJsonStore(Path(tmp) / "photo_frame.json", {})
+            try:
+                config._store.save({
+                    "albums": ["invalid", {"name": "No path"},
+                               {"name": "Valid", "path": "C:/photos"}],
+                    "partner_albums": [None, {"path": "C:/shared"}],
+                })
+
+                loaded = config.load()
+
+                self.assertEqual(
+                    loaded["albums"],
+                    [
+                        {"name": "Valid", "path": "C:/photos"},
+                        {"name": config.DEFAULT_ALBUM_NAME,
+                         "path": str(config.app_paths.IMAGES_DIR)},
+                    ],
+                )
+                self.assertEqual(
+                    loaded["partner_albums"], [{"path": "C:/shared"}]
+                )
+                config.add_album("Added", "C:/added")
+            finally:
+                config._store = original_store
+
 
 if __name__ == "__main__":
     unittest.main()
