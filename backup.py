@@ -85,23 +85,39 @@ def restore_backup(zip_path: Path) -> None:
         if tmp.exists():
             shutil.rmtree(tmp)
         tmp.mkdir(parents=True, exist_ok=True)
-        _safe_extract_all(zf, tmp)
+        try:
+            _safe_extract_all(zf, tmp)
+        except Exception:
+            shutil.rmtree(tmp, ignore_errors=True)
+            raise
 
         # 覆盖 config
         src_config = tmp / "config"
         if src_config.exists():
-            _overwrite_dir(src_config, app_paths.CONFIG_DIR)
+            try:
+                _overwrite_dir(src_config, app_paths.CONFIG_DIR)
+            except Exception:
+                shutil.rmtree(tmp, ignore_errors=True)
+                raise
         # 覆盖 data
         src_data = tmp / "data"
         if src_data.exists():
-            _overwrite_dir(src_data, app_paths.DATA_DIR)
+            try:
+                _overwrite_dir(src_data, app_paths.DATA_DIR)
+            except Exception:
+                shutil.rmtree(tmp, ignore_errors=True)
+                raise
         # 覆盖 images
         src_images = tmp / "images"
         if src_images.exists():
-            _overwrite_dir(src_images, app_paths.IMAGES_DIR)
+            try:
+                _overwrite_dir(src_images, app_paths.IMAGES_DIR)
+            except Exception:
+                shutil.rmtree(tmp, ignore_errors=True)
+                raise
 
         # 清理临时目录
-        shutil.rmtree(tmp)
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def _overwrite_dir(src: Path, dst: Path) -> None:

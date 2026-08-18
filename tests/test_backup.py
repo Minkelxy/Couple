@@ -49,6 +49,20 @@ class BackupExtractionTests(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         _safe_extract_all(zf, dest)
 
+    def test_restore_cleans_staging_directory_after_extract_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "unsafe.zip"
+            cache_dir = Path(tmp) / "cache"
+            cache_dir.mkdir()
+            with zipfile.ZipFile(archive, "w") as zf:
+                zf.writestr("../outside.txt", "blocked")
+
+            with patch.object(backup.app_paths, "CACHE_DIR", cache_dir):
+                with self.assertRaises(ValueError):
+                    backup.restore_backup(archive)
+
+            self.assertFalse((cache_dir / "_restore_tmp").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
