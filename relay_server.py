@@ -40,6 +40,7 @@ import base64
 import binascii
 import hashlib
 import json
+import os
 import re
 import secrets
 import sqlite3
@@ -55,7 +56,9 @@ from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
-_DB_PATH = Path(__file__).parent / "letters.db"
+_DB_PATH = Path(
+    os.environ.get("COUPLE_RELAY_DB", str(Path(__file__).with_name("letters.db")))
+).expanduser()
 _LOCK = threading.Lock()
 _RETENTION_DAYS = 30
 _CLEANUP_INTERVAL_SEC = 6 * 3600
@@ -79,6 +82,8 @@ _PAIR_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
 _SINCE_RE = re.compile(r"^[0-9T:.\-]{16,64}$")
 
 # ========== 配对状态（内存，重启清空，10 分钟 TTL）==========
+# Pairing sessions are stored in SQLite so multiple Gunicorn workers share state.
+# This legacy dict is retained only for compatibility with older test helpers.
 _PAIRING: dict[str, dict] = {}
 _PAIRING_TTL_SEC = 600
 _PAIRING_LOCK = threading.Lock()
@@ -147,6 +152,7 @@ def _pk_fp(pk_bytes: bytes) -> str:
 # ---------- 数据库 ----------
 
 def _get_db() -> sqlite3.Connection:
+    _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(_DB_PATH), check_same_thread=False, timeout=30.0)
     conn.row_factory = sqlite3.Row
     try:
@@ -189,6 +195,14 @@ def _init_db() -> None:
                 member_a_pk  TEXT NOT NULL,
                 member_b_pk  TEXT NOT NULL,
                 created_at   TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS pairing_sessions (
+                token      TEXT PRIMARY KEY NOT NULL,
+                created_at REAL NOT NULL,
+                host       TEXT,
+                guest      TEXT
             )
         """)
         conn.execute(
@@ -238,10 +252,55 @@ def _save_channel(channel_id: str, pk_a: str, pk_b: str) -> None:
 # ---------- 配对 API ----------
 
 def _pairing_expire_locked() -> None:
-    now = time.time()
-    to_del = [tok for tok, s in _PAIRING.items() if now - s["created_at"] > _PAIRING_TTL_SEC]
-    for t in to_del:
-        del _PAIRING[t]
+    cutoff = time.time() - _PAIRING_TTL_SEC
+    with _db_session() as conn:
+        conn.execute("DELETE FROM pairing_sessions WHERE created_at < ?", (cutoff,))
+        conn.commit()
+
+
+def _load_pairing(token: str) -> dict | None:
+    with _db_session() as conn:
+        row = conn.execute(
+            "SELECT created_at, host, guest FROM pairing_sessions WHERE token = ?",
+            (token,),
+        ).fetchone()
+    if row is None:
+        return None
+    state = {"created_at": row["created_at"], "host": None, "guest": None}
+    for role in ("host", "guest"):
+        raw = row[role]
+        if raw:
+            try:
+                value = json.loads(raw)
+            except (TypeError, json.JSONDecodeError):
+                value = None
+            if isinstance(value, dict):
+                state[role] = value
+    return state
+
+
+def _save_pairing(token: str, state: dict) -> None:
+    with _db_session() as conn:
+        conn.execute(
+            "INSERT INTO pairing_sessions(token, created_at, host, guest) "
+            "VALUES (?, ?, ?, ?) ON CONFLICT(token) DO UPDATE SET "
+            "created_at=excluded.created_at, host=excluded.host, guest=excluded.guest",
+            (
+                token,
+                float(state.get("created_at", time.time())),
+                json.dumps(state.get("host"), ensure_ascii=False)
+                if state.get("host") is not None else None,
+                json.dumps(state.get("guest"), ensure_ascii=False)
+                if state.get("guest") is not None else None,
+            ),
+        )
+        conn.commit()
+
+
+def _delete_pairing(token: str) -> None:
+    with _db_session() as conn:
+        conn.execute("DELETE FROM pairing_sessions WHERE token = ?", (token,))
+        conn.commit()
 
 
 def _clean_text(value) -> str | None:
@@ -274,14 +333,13 @@ def api_pairing_declare() -> tuple:
 
     with _PAIRING_LOCK:
         _pairing_expire_locked()
-        state = _PAIRING.get(token)
+        state = _load_pairing(token)
         if state is None:
             state = {
                 "host": None,
                 "guest": None,
                 "created_at": time.time(),
             }
-            _PAIRING[token] = state
         slot = state.get(role)
         # 允许同角色同 pk 重复 declare（刷新 TTL 用），但不同 pk 抢同一 slot 拒绝
         if slot is not None and slot["pk_b64"] != pk_b64:
@@ -298,6 +356,7 @@ def api_pairing_declare() -> tuple:
         }
         # 每次 declare 刷新该 token 的 TTL（等价于重置到 now）
         state["created_at"] = time.time()
+        _save_pairing(token, state)
     return jsonify({"ok": True, "nonce": nonce}), 200
 
 
@@ -310,7 +369,7 @@ def api_pairing_poll() -> tuple:
         return jsonify({"ok": False, "message": "token/role 缺失或非法"}), 400
     with _PAIRING_LOCK:
         _pairing_expire_locked()
-        state = _PAIRING.get(token)
+        state = _load_pairing(token)
         if state is None or state.get(role) is None:
             return jsonify({"ok": False, "message": "配对记录不存在（可能已过期）", "fatal": True}), 410
         partner_role = "guest" if role == "host" else "host"
@@ -337,7 +396,7 @@ def api_pairing_poll() -> tuple:
             concat = a_bytes + b_bytes if a_bytes <= b_bytes else b_bytes + a_bytes
             channel_id = hashlib.sha256(concat).hexdigest()[:24]
             _save_channel(channel_id, a_pk, b_pk)
-            _PAIRING.pop(token, None)
+            _delete_pairing(token)
             return jsonify({
                 "ok": True,
                 "both_confirmed": True,
@@ -367,7 +426,7 @@ def api_pairing_confirm() -> tuple:
     if not safety_confirmed:
         return jsonify({"ok": False, "message": "未确认安全码一致"}), 400
     with _PAIRING_LOCK:
-        state = _PAIRING.get(token)
+        state = _load_pairing(token)
         if state is None:
             return jsonify({"ok": False, "message": "配对记录不存在或已过期", "fatal": True}), 410
         slot = state.get(role)
@@ -385,6 +444,7 @@ def api_pairing_confirm() -> tuple:
         if not _verify_sig(pk_b64, sig_b64, plain):
             return jsonify({"ok": False, "message": "确认签名校验失败"}), 403
         slot["confirmed"] = True
+        _save_pairing(token, state)
     return jsonify({"ok": True}), 200
 
 
@@ -673,5 +733,5 @@ if __name__ == "__main__":
     print("健康检查: http://127.0.0.1:5000/health")
     print("公钥身份通道说明：先 /api/pairing/declare→poll→confirm 配对，"
           "然后 /api/send 和 /api/poll 走 channel_id 模式")
-    print("生产部署请用: gunicorn -w 4 -b 0.0.0.0:5000 relay_server:app")
+    print("生产部署请用: gunicorn --workers 2 --bind 0.0.0.0:5000 relay_server:app")
     app.run(host="0.0.0.0", port=5000, debug=False)

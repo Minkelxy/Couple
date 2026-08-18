@@ -1,7 +1,10 @@
+import base64
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 import relay_server
 
@@ -36,6 +39,45 @@ class RelayPollingTests(unittest.TestCase):
 
         self.assertEqual(declared.status_code, 400)
         self.assertEqual(confirmed.status_code, 400)
+
+    def test_pairing_state_survives_process_memory_reset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_db_path = relay_server._DB_PATH
+            original_pairing = relay_server._PAIRING.copy()
+            relay_server._DB_PATH = Path(tmp) / "letters.db"
+            relay_server._PAIRING.clear()
+            try:
+                relay_server._init_db()
+                public_key = Ed25519PrivateKey.generate().public_key().public_bytes_raw()
+                pk_b64 = base64.urlsafe_b64encode(public_key).rstrip(b"=").decode("ascii")
+                client = relay_server.app.test_client()
+
+                declared = client.post(
+                    "/api/pairing/declare",
+                    json={
+                        "token": "ABC234",
+                        "role": "host",
+                        "pk_b64": pk_b64,
+                        "nickname": "Windows A",
+                    },
+                )
+                self.assertEqual(declared.status_code, 200)
+
+                relay_server._PAIRING.clear()
+                polled = client.get(
+                    "/api/pairing/poll",
+                    query_string={
+                        "token": "ABC234",
+                        "role": "host",
+                        "step": "wait_partner",
+                    },
+                )
+                self.assertEqual(polled.status_code, 200)
+                self.assertFalse(polled.get_json()["partner_ready"])
+            finally:
+                relay_server._DB_PATH = original_db_path
+                relay_server._PAIRING.clear()
+                relay_server._PAIRING.update(original_pairing)
 
     def test_send_rejects_non_string_bucket_fields(self):
         client = relay_server.app.test_client()

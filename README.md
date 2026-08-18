@@ -56,10 +56,12 @@ python -m PyInstaller couple_suite.spec --noconfirm
 部署一个轻量 HTTP 中转服务器（`relay_server.py`），双机通过配对码收发。
 
 ```bash
-pip install flask gunicorn
-python relay_server.py          # 开发
-gunicorn -w 4 -b 0.0.0.0:5000 relay_server:app   # 生产
+pip install -r relay-requirements.txt
+python relay_server.py                         # 开发
+COUPLE_RELAY_DB=/srv/couple/letters.db gunicorn --workers 2 --bind 0.0.0.0:5000 relay_server:app
 ```
+
+Ubuntu 服务器建议把 `COUPLE_RELAY_DB` 指向持久化数据盘，并使用 nginx + HTTPS 反向代理。配对会话和信件都保存在 SQLite；配对状态不依赖单个 Gunicorn worker，服务重载或 worker 切换不会中断两台 Windows 客户端的配对流程。
 
 接口约定：
 
