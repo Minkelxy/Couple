@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 import app_paths
-from common_utils import log_exception
+from common_utils import atomic_write_bytes, log_exception
 
 # 旧路径（相对项目根目录，即本文件所在目录）
 _PROJECT_ROOT = Path(__file__).parent
@@ -139,8 +139,9 @@ def run_migration() -> bool:
     # 仅当所有步骤都成功时才写迁移标记，任一步骤失败下次启动重新尝试
     if all_ok:
         try:
-            _MIGRATED_MARKER.write_text(
-                datetime.now().isoformat(timespec="seconds"), encoding="utf-8"
+            atomic_write_bytes(
+                _MIGRATED_MARKER,
+                datetime.now().isoformat(timespec="seconds").encode("utf-8"),
             )
         except Exception:
             log_exception("写迁移标记失败")
