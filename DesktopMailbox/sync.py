@@ -304,7 +304,9 @@ class SyncHub(QObject):
             if server_ts:
                 # 仅更新内存游标，延迟落盘：必须等所有信件处理完才保存，
                 # 否则中途崩溃会因游标已前进导致本批信件永久丢失。
-                self._cloud_last_ts = server_ts
+                if not isinstance(server_ts, str):
+                    log_warning("云轮询游标格式非法，保留旧游标")
+                    server_ts = ""
             for letter in letters:
                 self.on_received(
                     letter.get("meta", {}),
@@ -315,6 +317,7 @@ class SyncHub(QObject):
             # 所有信件处理完毕后再落盘游标，保证下次轮询不会跳过本批信件；
             # 若 letters 为空但 server_ts 前进，也需保存游标。
             if server_ts:
+                self._cloud_last_ts = server_ts
                 self._save_cursor()
         except Exception:
             log_exception("云轮询异常")
