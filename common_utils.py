@@ -9,6 +9,8 @@ import logging
 import os
 import re
 import threading
+import tempfile
+from copy import deepcopy
 from pathlib import Path
 from typing import Optional
 
@@ -163,6 +165,21 @@ def check_attachment_size(data: bytes) -> Optional[str]:
 # ---------- 原子写 JSON 存储 ----------
 
 
+_ATOMIC_JSON_LOCKS: dict[str, threading.RLock] = {}
+_ATOMIC_JSON_LOCKS_GUARD = threading.Lock()
+
+
+def _lock_for_json_path(path: Path) -> threading.RLock:
+    """Return one process-wide lock for each JSON path."""
+    key = str(path.resolve())
+    with _ATOMIC_JSON_LOCKS_GUARD:
+        lock = _ATOMIC_JSON_LOCKS.get(key)
+        if lock is None:
+            lock = threading.RLock()
+            _ATOMIC_JSON_LOCKS[key] = lock
+        return lock
+
+
 class AtomicJsonStore:
     """线程安全的原子写 JSON 存储。
 
@@ -174,29 +191,50 @@ class AtomicJsonStore:
         # path: Path 对象;default: 文件不存在/损坏时的默认值(通常 {} 或 [])
         self.path = Path(path)
         self.default = {} if default is None else default
-        self._lock = threading.Lock()
+        self._lock = _lock_for_json_path(self.path)
+
+    def _default_value(self):
+        # Callers may mutate a loaded default; never let that mutate the store.
+        return deepcopy(self.default)
 
     def load(self):
         """加载 JSON,文件不存在或损坏返回 default(并 log_warning)。"""
         if not self.path.exists():
-            return self.default
+            return self._default_value()
         try:
             return json.loads(self.path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as e:
             log_warning("JSON 文件损坏,返回默认值 %s: %s", self.path, e)
-            return self.default
+            return self._default_value()
         except OSError as e:
             log_warning("JSON 文件读取失败,返回默认值 %s: %s", self.path, e)
-            return self.default
+            return self._default_value()
 
     def save(self, data):
         """原子写入:写临时文件 .tmp -> os.replace 覆盖目标。"""
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(self.path.suffix + ".tmp")
-        tmp.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        os.replace(str(tmp), str(self.path))
+        with self._lock:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_name = None
+            try:
+                with tempfile.NamedTemporaryFile(
+                    mode="w",
+                    encoding="utf-8",
+                    dir=self.path.parent,
+                    prefix=f".{self.path.name}.",
+                    suffix=".tmp",
+                    delete=False,
+                ) as tmp:
+                    tmp_name = tmp.name
+                    json.dump(data, tmp, ensure_ascii=False, indent=2)
+                    tmp.flush()
+                    os.fsync(tmp.fileno())
+                os.replace(tmp_name, self.path)
+            finally:
+                if tmp_name:
+                    try:
+                        os.unlink(tmp_name)
+                    except FileNotFoundError:
+                        pass
 
     def update(self, **kwargs):
         """读改写:load -> update dict -> save。加锁串行化。"""
