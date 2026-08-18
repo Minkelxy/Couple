@@ -34,9 +34,14 @@ def _load() -> list[dict]:
     for it in items:
         if not isinstance(it, dict):
             continue
-        if it.get("source") not in _VALID_SOURCES:
-            it["source"] = "self"
-        valid_items.append(it)
+        normalized = dict(it)
+        if normalized.get("source") not in _VALID_SOURCES:
+            normalized["source"] = "self"
+        if "type" in normalized and normalized.get("type") not in _VALID_TYPES:
+            normalized["type"] = "visited"
+        if "date" in normalized and not isinstance(normalized.get("date"), str):
+            normalized["date"] = ""
+        valid_items.append(normalized)
     return valid_items
 
 
@@ -173,5 +178,5 @@ def sorted_by_date() -> list[dict]:
     """按 date 升序返回，用于路线动画。无 date 的排到最后。"""
     def _key(it: dict) -> tuple[int, str]:
         d = it.get("date", "")
-        return (0, d) if d else (1, "")
+        return (0, d) if isinstance(d, str) and d else (1, "")
     return sorted(_load(), key=_key)
