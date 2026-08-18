@@ -7,8 +7,6 @@
 """
 from __future__ import annotations
 
-import json
-import os
 import re
 import threading
 import uuid
@@ -16,13 +14,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from common_utils import log_exception, log_warning
+from common_utils import AtomicJsonStore, atomic_write_bytes, log_exception, log_warning
 
 from . import config
 from . import crypto
 
 _META_PATH = config.DATA_DIR / "mailbox.json"
 _LETTERS_DIR = config.DATA_DIR / "letters"
+_META_STORE = AtomicJsonStore(_META_PATH, [])
 
 # letter_id 仅允许 12 位十六进制（write_letter 用 uuid4().hex[:12] 生成）
 # 防御路径遍历：read/delete 时校验，避免 ../ 逃逸 _LETTERS_DIR
@@ -43,22 +42,12 @@ def _safe_id(letter_id: str) -> bool:
 
 
 def _load_meta() -> list[dict]:
-    if not _META_PATH.exists():
-        return []
-    try:
-        return json.loads(_META_PATH.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as e:
-        log_warning("信件元数据加载失败，返回空列表: %s", e)
-        return []
+    data = _META_STORE.load()
+    return [item for item in data if isinstance(item, dict)] if isinstance(data, list) else []
 
 
 def _save_meta(items: list[dict]) -> None:
-    """原子写：先写临时文件再 os.replace，避免写入中途崩溃导致 JSON 截断损坏。"""
-    tmp = _META_PATH.with_suffix(".tmp")
-    tmp.write_text(
-        json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    os.replace(tmp, _META_PATH)
+    _META_STORE.save(items)
 
 
 def write_letter(
@@ -92,7 +81,7 @@ def write_letter(
 
         # 加密正文
         enc_text = crypto.encrypt(content.encode("utf-8"))
-        (_LETTERS_DIR / f"{letter_id}.enc").write_bytes(enc_text)
+        atomic_write_bytes(_LETTERS_DIR / f"{letter_id}.enc", enc_text)
 
         meta = {
             "id": letter_id,
@@ -110,7 +99,7 @@ def write_letter(
 
         if attachment_bytes is not None:
             enc_att = crypto.encrypt(attachment_bytes)
-            (_LETTERS_DIR / f"{letter_id}_att.enc").write_bytes(enc_att)
+            atomic_write_bytes(_LETTERS_DIR / f"{letter_id}_att.enc", enc_att)
 
         items.append(meta)
         _save_meta(items)
