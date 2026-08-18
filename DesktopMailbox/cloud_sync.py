@@ -15,12 +15,18 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import json
 import urllib.parse
 import urllib.request
 
 import identity as idm
 from common_utils import MAX_ATTACHMENT_BYTES, log_exception, log_info, log_warning
+
+
+_MAX_CONTENT_BYTES = 2 * 1024 * 1024
+_MAX_ATTACHMENT_B64_LEN = 4 * ((MAX_ATTACHMENT_BYTES + 2) // 3)
+_MAX_ATTACHMENT_EXT_BYTES = 32
 
 
 def _b64e(data: bytes) -> str:
@@ -135,22 +141,35 @@ class CloudSyncClient:
         return f"{self._server}/api/poll?{qs}"
 
     def _parse_one_inbound(self, item: dict) -> dict | None:
+        if not isinstance(item, dict):
+            return None
         att_b64 = item.get("attachment_base64", "") or ""
-        if len(att_b64) > MAX_ATTACHMENT_BYTES * 2:
+        if not isinstance(att_b64, str):
+            return None
+        if len(att_b64) > _MAX_ATTACHMENT_B64_LEN:
             log_warning("云中转信件附件过大（base64 %d 字节），已丢弃", len(att_b64))
             return None
         try:
-            att = base64.b64decode(att_b64)
-        except Exception:
-            att = b""
+            att = base64.b64decode(att_b64, validate=True)
+        except (binascii.Error, ValueError):
+            return None
+        if len(att) > MAX_ATTACHMENT_BYTES:
+            return None
+        content_b64 = item.get("content_base64", "") or ""
+        if not isinstance(content_b64, str):
+            return None
+        if len(content_b64) > 4 * ((_MAX_CONTENT_BYTES + 2) // 3):
+            return None
         try:
-            content = base64.b64decode(item.get("content_base64", "")).decode("utf-8")
-        except Exception:
-            content = ""
+            content = base64.b64decode(content_b64, validate=True).decode("utf-8")
+        except (binascii.Error, UnicodeDecodeError, ValueError):
+            return None
         meta = item.get("meta", {})
         if not isinstance(meta, dict):
-            meta = {}
+            return None
         att_ext = item.get("attachment_ext", "") or ""
+        if not isinstance(att_ext, str) or len(att_ext) > _MAX_ATTACHMENT_EXT_BYTES:
+            return None
         # 身份校验：如果本地已经配对 partner_pk，必须验；否则可能是 legacy 自发自收+uuid 去重过滤
         status = idm.get_status()
         if status.paired:
