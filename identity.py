@@ -27,13 +27,15 @@ from pathlib import Path
 from typing import Any
 
 import app_paths
-from common_utils import log_exception, log_warning
+from common_utils import AtomicJsonStore, log_exception, log_warning
 from DesktopMailbox.crypto import decrypt as _fernet_dec, encrypt as _fernet_enc
 
 IDENTITY_DIR = app_paths.CONFIG_DIR / "identity"
 _MY_SK_ENC = IDENTITY_DIR / "my_sk.enc"
 _MY_PK_JSON = IDENTITY_DIR / "my_pk.json"
 _PARTNER_JSON = IDENTITY_DIR / "partner.json"
+_MY_PK_STORE = AtomicJsonStore(_MY_PK_JSON, {})
+_PARTNER_STORE = AtomicJsonStore(_PARTNER_JSON, {})
 
 # 6 位配对 token 字符表（去掉 I/L/0/O 避免视觉混淆）
 _TOKEN_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
@@ -122,13 +124,23 @@ def ensure_identity() -> tuple[bytes, object]:
     with _identity_lock:
         _ensure_dirs()
         if _cached_sk is not None and _MY_PK_JSON.exists():
-            pk_bytes = _b64d(json.loads(_MY_PK_JSON.read_text(encoding="utf-8"))["pk_b64"])
-            return pk_bytes, _cached_sk
+            record = _MY_PK_STORE.load()
+            try:
+                pk_bytes = _b64d(record["pk_b64"])
+                _load_ed25519_public_key(pk_bytes)
+                return pk_bytes, _cached_sk
+            except (KeyError, TypeError, ValueError):
+                _cached_sk = None
         if _MY_SK_ENC.exists() and _MY_PK_JSON.exists():
             try:
                 sk_bytes = _fernet_dec(_MY_SK_ENC.read_bytes())
                 sk = _load_ed25519_private_key(sk_bytes)
                 pk_bytes = sk.public_key().public_bytes_raw()
+                _MY_PK_STORE.save({
+                    "pk_b64": _b64e(pk_bytes),
+                    "created_at": __import__("datetime").datetime.now().isoformat(timespec="seconds"),
+                    "fingerprint": _pk_fp(pk_bytes),
+                })
                 _cached_sk = sk
                 _cached_status = None
                 return pk_bytes, sk
@@ -141,11 +153,11 @@ def ensure_identity() -> tuple[bytes, object]:
         pk_bytes = sk.public_key().public_bytes_raw()
         # 落盘：sk 用 Fernet 加密（至少不比裸存差）
         _MY_SK_ENC.write_bytes(_fernet_enc(sk_bytes))
-        _MY_PK_JSON.write_text(json.dumps({
+        _MY_PK_STORE.save({
             "pk_b64": _b64e(pk_bytes),
             "created_at": __import__("datetime").datetime.now().isoformat(timespec="seconds"),
             "fingerprint": _pk_fp(pk_bytes),
-        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        })
         _cached_sk = sk
         _cached_status = None
         return pk_bytes, sk
@@ -165,7 +177,7 @@ def get_status() -> IdentityStatus:
         safety = None
         if _PARTNER_JSON.exists():
             try:
-                pd = json.loads(_PARTNER_JSON.read_text(encoding="utf-8"))
+                pd = _PARTNER_STORE.load()
                 pk_b64 = pd.get("pk_b64", "")
                 if pk_b64:
                     partner_pk = _b64d(pk_b64)
@@ -211,7 +223,7 @@ def save_partner(pk_b64: str, nickname: str | None = None) -> IdentityStatus:
             "paired_at": _dt.datetime.now().isoformat(timespec="seconds"),
             "confirmed": True,
         }
-        _PARTNER_JSON.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        _PARTNER_STORE.save(payload)
         _cached_status = None
     return get_status()
 
