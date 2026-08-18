@@ -234,7 +234,9 @@ def _pairing_expire_locked() -> None:
 
 @app.route("/api/pairing/declare", methods=["POST"])
 def api_pairing_declare() -> tuple:
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"ok": False, "message": "JSON body 必须是对象"}), 400
     token = (data.get("token") or "").strip().upper()
     role = (data.get("role") or "").strip().lower()
     pk_b64 = (data.get("pk_b64") or "").strip()
@@ -322,7 +324,9 @@ def api_pairing_poll() -> tuple:
 
 @app.route("/api/pairing/confirm", methods=["POST"])
 def api_pairing_confirm() -> tuple:
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"ok": False, "message": "JSON body 必须是对象"}), 400
     token = (data.get("token") or "").strip().upper()
     role = (data.get("role") or "").strip().lower()
     my_nonce = (data.get("my_nonce") or "").strip()

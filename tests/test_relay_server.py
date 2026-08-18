@@ -7,6 +7,15 @@ import relay_server
 
 
 class RelayPollingTests(unittest.TestCase):
+    def test_pairing_endpoints_reject_non_object_json(self):
+        client = relay_server.app.test_client()
+
+        declared = client.post("/api/pairing/declare", json=["invalid"])
+        confirmed = client.post("/api/pairing/confirm", json="invalid")
+
+        self.assertEqual(declared.status_code, 400)
+        self.assertEqual(confirmed.status_code, 400)
+
     def test_messages_created_after_empty_poll_are_not_skipped(self):
         with tempfile.TemporaryDirectory() as tmp:
             original_db_path = relay_server._DB_PATH
