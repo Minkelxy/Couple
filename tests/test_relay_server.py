@@ -53,6 +53,22 @@ class RelayPollingTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
 
+    def test_send_rejects_non_object_meta(self):
+        client = relay_server.app.test_client()
+
+        response = client.post(
+            "/api/send",
+            json={
+                "pair_code": "test-pair",
+                "meta": [],
+                "content_base64": "",
+                "attachment_base64": "",
+                "attachment_ext": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+
     def test_messages_created_after_empty_poll_are_not_skipped(self):
         with tempfile.TemporaryDirectory() as tmp:
             original_db_path = relay_server._DB_PATH

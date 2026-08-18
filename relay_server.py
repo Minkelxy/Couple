@@ -464,7 +464,7 @@ def api_send() -> tuple:
 
     meta = data.get("meta")
     if not isinstance(meta, dict):
-        meta = {}
+        return jsonify({"ok": False, "error": "meta 必须是对象"}), 400
     content_b64 = data.get("content_base64") or ""
     attach_b64 = data.get("attachment_base64") or ""
     attach_ext = data.get("attachment_ext") or ""
