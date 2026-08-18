@@ -4,29 +4,23 @@
 """
 from __future__ import annotations
 
-import json
-import os
 import threading
 from datetime import datetime
 from pathlib import Path
 
-from common_utils import log_exception, log_warning
+from common_utils import AtomicJsonStore, log_exception
 
 from . import config
 from . import letter_store
 
 _SENT_LOG = config.DATA_DIR / "anniv_sent_log.json"
+_SENT_STORE = AtomicJsonStore(_SENT_LOG, [])
 _LOCK = threading.Lock()
 
 
 def _load_sent() -> set[str]:
-    if not _SENT_LOG.exists():
-        return set()
-    try:
-        return set(json.loads(_SENT_LOG.read_text(encoding="utf-8")))
-    except (json.JSONDecodeError, OSError) as e:
-        log_warning("纪念日投递记录加载失败，返回空: %s", e)
-        return set()
+    data = _SENT_STORE.load()
+    return {item for item in data if isinstance(item, str)} if isinstance(data, list) else set()
 
 
 def _mark_sent(*keys: str) -> None:
@@ -34,11 +28,7 @@ def _mark_sent(*keys: str) -> None:
     s = _load_sent()
     for k in keys:
         s.add(k)
-    # 临时文件 + os.replace 原子写，避免半写文件下次启动当空重建
-    tmp = _SENT_LOG.with_suffix(".tmp")
-    tmp.write_text(json.dumps(sorted(s), ensure_ascii=False, indent=2),
-                   encoding="utf-8")
-    os.replace(tmp, _SENT_LOG)
+    _SENT_STORE.save(sorted(s))
 
 
 def check_and_deliver() -> list[dict]:
