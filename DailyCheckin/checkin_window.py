@@ -83,11 +83,16 @@ def handle_partner_event(meta: dict, content: str, attachment: bytes,
     供 launcher 路由器调用，无需窗口实例即可落盘。
     """
     date_str = meta.get("date", "")
+    if not isinstance(date_str, str) or not date_str:
+        log_warning("收到对方 checkin 事件的非法日期: %r", date_str)
+        return
     try:
         mood = int(meta.get("mood", 0))
     except (TypeError, ValueError):
         mood = 0
     note = meta.get("note", "") or ""
+    if not isinstance(note, str):
+        note = str(note)
     image_path = _save_partner_image(attachment, att_ext, date_str)
     store.add_partner_record(date_str, mood, note, image_path)
     win = _active_window() if _active_window is not None else None

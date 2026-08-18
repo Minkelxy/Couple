@@ -61,7 +61,8 @@ def handle_partner_event(meta: dict, content: str, attachment: bytes,
     安全：city 来自网络输入，用 safe_filename 过滤防路径遍历；attachment 大小校验。
     """
     city = meta.get("city", "")
-    if not city:
+    if not isinstance(city, str) or not city:
+        log_warning("收到对方 map 事件的非法城市: %r", city)
         return
     # 防御：lat/lng 是网络输入，非数字会在 store 里 float() 抛 ValueError
     try:
@@ -72,6 +73,8 @@ def handle_partner_event(meta: dict, content: str, attachment: bytes,
                     meta.get("lat"), meta.get("lng"))
         return
     note = meta.get("note", "")
+    if not isinstance(note, str):
+        note = str(note)
     photo_filename = ""
     if attachment:
         # 附件大小校验

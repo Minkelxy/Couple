@@ -30,6 +30,13 @@ class ReceivedImageTests(unittest.TestCase):
             finally:
                 checkin_window.store.PARTNER_IMAGES_DIR = original_dir
 
+    def test_invalid_checkin_date_is_dropped_before_persistence(self):
+        with patch.object(checkin_window.store, "add_partner_record") as add_record:
+            checkin_window.handle_partner_event(
+                {"date": ["invalid"], "mood": 5}, "", b"", ""
+            )
+        add_record.assert_not_called()
+
     def test_travel_partner_image_uses_atomic_write(self):
         with tempfile.TemporaryDirectory() as tmp:
             original_dir = map_window.app_paths.TRAVEL_DIR
@@ -54,6 +61,16 @@ class ReceivedImageTests(unittest.TestCase):
                 write.assert_called_once_with(path, b"image")
             finally:
                 map_window.app_paths.TRAVEL_DIR = original_dir
+
+    def test_invalid_travel_city_is_dropped_before_persistence(self):
+        with patch.object(map_window.store, "add_partner_city") as add_city:
+            map_window.handle_partner_event(
+                {"city": {"invalid": True}, "lat": 1, "lng": 2},
+                "",
+                b"",
+                "",
+            )
+        add_city.assert_not_called()
 
     def test_photo_frame_partner_image_uses_atomic_write(self):
         with tempfile.TemporaryDirectory() as tmp:

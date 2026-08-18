@@ -108,7 +108,7 @@ def safe_filename(name: str, fallback: str = "file") -> str:
     - 把非法字符替换为下划线
     - 限制长度
     """
-    if not name:
+    if not isinstance(name, str) or not name:
         return fallback
     base = Path(name).name  # 去掉任何目录前缀
     if not base or base in (".", ".."):
