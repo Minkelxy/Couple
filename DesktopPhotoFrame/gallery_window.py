@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
 )
 
 from common_utils import (
+    atomic_write_bytes,
     check_attachment_size,
     log_exception,
     log_warning,
@@ -678,7 +679,7 @@ def handle_partner_event(
     safe_name = safe_filename(raw_name, fallback="photo")
     filename = f"{int(time.time())}_{safe_name}"
     try:
-        (shared_dir / filename).write_bytes(attachment)
+        atomic_write_bytes(shared_dir / filename, attachment)
     except OSError:
         log_exception("写入共享照片失败: %s", filename)
         return
