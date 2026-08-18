@@ -42,6 +42,14 @@ class AtomicJsonStoreTests(unittest.TestCase):
 
             self.assertEqual(store.load(), {"items": []})
 
+    def test_invalid_utf8_returns_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.json"
+            path.write_bytes(b"{\xff\xfe")
+            store = AtomicJsonStore(path, {"fallback": True})
+
+            self.assertEqual(store.load(), {"fallback": True})
+
     def test_distinct_instances_do_not_lose_updates(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "state.json"

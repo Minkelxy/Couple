@@ -264,6 +264,9 @@ class AtomicJsonStore:
         except json.JSONDecodeError as e:
             log_warning("JSON 文件损坏,返回默认值 %s: %s", self.path, e)
             return self._default_value()
+        except UnicodeDecodeError as e:
+            log_warning("invalid UTF-8 JSON, returning default %s: %s", self.path, e)
+            return self._default_value()
         except OSError as e:
             log_warning("JSON 文件读取失败,返回默认值 %s: %s", self.path, e)
             return self._default_value()
