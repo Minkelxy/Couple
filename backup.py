@@ -1,12 +1,16 @@
 """数据备份与恢复：打包 AppData 数据为 zip，支持从 zip 恢复。"""
 from __future__ import annotations
-import os
 import zipfile
 import shutil
 from datetime import datetime
 from pathlib import Path
 
 import app_paths
+
+
+_MAX_BACKUP_ENTRIES = 10_000
+_MAX_BACKUP_MEMBER_BYTES = 500 * 1024 * 1024
+_MAX_BACKUP_UNCOMPRESSED_BYTES = 2 * 1024 * 1024 * 1024
 
 def export_backup(dest_zip: Path) -> Path:
     """把 config/ + data/ + images/ 打包到 zip。
@@ -41,12 +45,30 @@ def _add_dir_to_zip(zf: zipfile.ZipFile, src_dir: Path, arcname_prefix: str):
 def _safe_extract_all(zf: zipfile.ZipFile, dest: Path) -> None:
     """安全解压：逐条校验路径，防止 ZipSlip 路径穿越（../../etc/passwd）。"""
     dest_resolved = dest.resolve()
-    for member in zf.infolist():
+    members = zf.infolist()
+    if len(members) > _MAX_BACKUP_ENTRIES:
+        raise ValueError(f"zip 鏉＄洰杩囧锛屾嫤鎴厓绱犳暟: {len(members)}")
+
+    total_size = 0
+    seen_targets: set[Path] = set()
+    for member in members:
+        mode = (member.external_attr >> 16) & 0xFFFF
+        if mode and (mode & 0o170000) == 0o120000:
+            raise ValueError(f"zip 鍖呭惈涓嶅厑璁哥殑绗﹀彿閾炬帴: {member.filename}")
+        if member.file_size > _MAX_BACKUP_MEMBER_BYTES:
+            raise ValueError(f"zip 鏂囦欢杩囧ぇ锛屾嫤鎴В鍘嬶細{member.filename}")
+        total_size += member.file_size
+        if total_size > _MAX_BACKUP_UNCOMPRESSED_BYTES:
+            raise ValueError("zip 瑙ｅ帇鍚庢�诲ぇ灏忚秴杩囦笂闄愶紝鎷掔粷瑙ｅ帇")
         target = (dest / member.filename).resolve()
-        if not (str(target).startswith(str(dest_resolved) + os.sep)
-                or target == dest_resolved):
+        try:
+            target.relative_to(dest_resolved)
+        except ValueError:
             raise ValueError(f"zip 条目含非法路径，拒绝解压: {member.filename}")
         # 3.12+ 的 extractall filter 更安全，但我们自己逐条校验兼容性更好
+        if target in seen_targets:
+            raise ValueError(f"zip 鍖呭惈閲嶅璺緞: {member.filename}")
+        seen_targets.add(target)
         zf.extract(member, dest)
 
 
