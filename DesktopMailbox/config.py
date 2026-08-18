@@ -47,11 +47,28 @@ DEFAULTS = {
 }
 
 
+def _bounded_int(value, default: int, minimum: int, maximum: int) -> int:
+    if isinstance(value, bool):
+        return default
+    try:
+        return min(max(int(value), minimum), maximum)
+    except (TypeError, ValueError):
+        return default
+
+
 def load() -> dict:
     data = deepcopy(DEFAULTS)
     stored = _STORE.load()
     if isinstance(stored, dict):
         data.update(stored)
+    data["check_interval_sec"] = _bounded_int(
+        data.get("check_interval_sec"), DEFAULTS["check_interval_sec"], 10, 600
+    )
+    for key in ("peer_port", "sync_port"):
+        data[key] = _bounded_int(data.get(key), DEFAULTS[key], 1, 65535)
+    data["cloud_poll_interval_sec"] = _bounded_int(
+        data.get("cloud_poll_interval_sec"), DEFAULTS["cloud_poll_interval_sec"], 5, 3600
+    )
     anniv = data.get("anniversaries", [])
     data["anniversaries"] = anniv if isinstance(anniv, list) else []
     return data
