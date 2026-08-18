@@ -102,10 +102,13 @@ def write_letter(
                     return it
 
         letter_id = uuid.uuid4().hex[:12]
+        written_paths: list[Path] = []
 
         # 加密正文
         enc_text = crypto.encrypt(content.encode("utf-8"))
-        atomic_write_bytes(_LETTERS_DIR / f"{letter_id}.enc", enc_text)
+        text_path = _LETTERS_DIR / f"{letter_id}.enc"
+        atomic_write_bytes(text_path, enc_text)
+        written_paths.append(text_path)
 
         meta = {
             "id": letter_id,
@@ -122,11 +125,29 @@ def write_letter(
             meta["message_id"] = message_id
 
         if attachment_bytes is not None:
-            enc_att = crypto.encrypt(attachment_bytes)
-            atomic_write_bytes(_LETTERS_DIR / f"{letter_id}_att.enc", enc_att)
+            try:
+                enc_att = crypto.encrypt(attachment_bytes)
+                attachment_path = _LETTERS_DIR / f"{letter_id}_att.enc"
+                atomic_write_bytes(attachment_path, enc_att)
+                written_paths.append(attachment_path)
+            except Exception:
+                for path in written_paths:
+                    try:
+                        path.unlink()
+                    except OSError:
+                        pass
+                raise
 
         items.append(meta)
-        _save_meta(items)
+        try:
+            _save_meta(items)
+        except Exception:
+            for path in written_paths:
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+            raise
     return meta
 
 

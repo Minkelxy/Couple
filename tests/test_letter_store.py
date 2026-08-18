@@ -72,6 +72,35 @@ class LetterStorePersistenceTests(unittest.TestCase):
             finally:
                 letter_store._META_STORE = original_store
 
+    def test_metadata_failure_cleans_up_newly_written_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_dir = letter_store._LETTERS_DIR
+            original_store = letter_store._META_STORE
+            letter_store._LETTERS_DIR = Path(tmp) / "letters"
+            letter_store._META_STORE = AtomicJsonStore(Path(tmp) / "mailbox.json", [])
+            try:
+                with patch.object(
+                    letter_store.crypto,
+                    "encrypt",
+                    side_effect=lambda data: b"enc:" + data,
+                ), patch.object(
+                    letter_store, "_save_meta", side_effect=OSError("read-only")
+                ):
+                    with self.assertRaises(OSError):
+                        letter_store.write_letter(
+                            author="A",
+                            recipient="B",
+                            title="Title",
+                            content="Content",
+                            deliver_at=datetime.now(),
+                            attachment_bytes=b"attachment",
+                            attachment_ext=".bin",
+                        )
+                self.assertEqual(list(letter_store._LETTERS_DIR.iterdir()), [])
+            finally:
+                letter_store._LETTERS_DIR = original_dir
+                letter_store._META_STORE = original_store
+
 
 if __name__ == "__main__":
     unittest.main()
