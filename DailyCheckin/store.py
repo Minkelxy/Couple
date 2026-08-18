@@ -1,12 +1,11 @@
 """打卡日历数据层：SQLite 存储打卡记录。"""
 from __future__ import annotations
 
-import json
 import sqlite3
 from datetime import date, datetime, timedelta
 
 import app_paths
-from common_utils import AtomicJsonStore, log_warning
+from common_utils import AtomicJsonStore
 
 DB_PATH = app_paths.CHECKIN_DIR / "checkin.db"
 IMAGES_DIR = app_paths.CHECKIN_DIR / "images"
@@ -107,13 +106,8 @@ def get_recent(days: int = 30) -> list[dict]:
 
 def _load_partner() -> dict:
     """读取对方打卡记录，返回 {date_str: record}。"""
-    if not PARTNER_FILE.exists():
-        return {}
-    try:
-        return json.loads(PARTNER_FILE.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as e:
-        log_warning("对方打卡记录加载失败，返回空: %s", e)
-        return {}
+    data = _partner_store.load()
+    return data if isinstance(data, dict) else {}
 
 
 def _save_partner(data: dict) -> None:

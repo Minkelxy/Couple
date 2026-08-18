@@ -6,14 +6,13 @@ rating_mine / rating_partner / review_mine / review_partner / added_at。
 """
 from __future__ import annotations
 
-import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Optional
 
 import app_paths
-from common_utils import AtomicJsonStore, log_warning
+from common_utils import AtomicJsonStore
 
 DB_PATH = app_paths.MOVIES_DIR / "movies.db"
 
@@ -147,13 +146,8 @@ _partner_status_store = AtomicJsonStore(PARTNER_STATUS_FILE, default={})
 
 
 def _load_partner_status() -> dict:
-    if not PARTNER_STATUS_FILE.exists():
-        return {}
-    try:
-        return json.loads(PARTNER_STATUS_FILE.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as e:
-        log_warning("影视对方状态加载失败，返回空: %s", e)
-        return {}
+    data = _partner_status_store.load()
+    return data if isinstance(data, dict) else {}
 
 
 def _save_partner_status(data: dict) -> None:
