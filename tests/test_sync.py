@@ -1,12 +1,29 @@
 import socket
+import tempfile
+import threading
 import unittest
 from types import SimpleNamespace
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from DesktopMailbox.sync import SyncHub, _recv_exact
+from common_utils import AtomicJsonStore
 
 
 class SyncTransportTests(unittest.TestCase):
+    def test_cloud_cursor_is_persisted_atomically(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = AtomicJsonStore(Path(tmp) / "cursor.json", {})
+            hub = SimpleNamespace(
+                _cursor_store=store,
+                _cursor_lock=threading.Lock(),
+                _cloud_last_ts="cursor",
+            )
+
+            SyncHub._save_cursor(hub)
+
+            self.assertEqual(store.get("server_ts"), "cursor")
+
     def test_cloud_cursor_does_not_advance_when_batch_processing_fails(self):
         hub = SimpleNamespace(
             _stopped=False,

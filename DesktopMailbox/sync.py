@@ -29,7 +29,7 @@ from PySide6.QtCore import QObject, Signal
 
 import app_paths
 import identity as idm
-from common_utils import MAX_ATTACHMENT_BYTES, log_exception, log_info, log_warning
+from common_utils import AtomicJsonStore, MAX_ATTACHMENT_BYTES, log_exception, log_info, log_warning
 
 from . import letter_store
 from .cloud_sync import CloudSyncClient
@@ -93,6 +93,7 @@ class SyncHub(QObject):
         # 云同步：本机 sender_id 用于自收信去重；游标持久化避免重启重复投递
         self._my_id: str = _ensure_uuid(app_paths.CONFIG_DIR)
         self._cursor_path: Path = app_paths.DATA_DIR / "cloud_cursor.json"
+        self._cursor_store = AtomicJsonStore(self._cursor_path, {})
         self._cloud_last_ts: str = self._load_cursor()
         self._cursor_lock = threading.Lock()
         # 接收端签名 LRU 去重：容量 1024，线程安全（on_received 在 socket 线程与云轮询线程中可能并发）
@@ -144,25 +145,15 @@ class SyncHub(QObject):
 
     def _load_cursor(self) -> str:
         """启动时加载上一次的游标，避免重启重复投递。"""
-        if not self._cursor_path.exists():
-            return ""
-        try:
-            data = json.loads(self._cursor_path.read_text(encoding="utf-8"))
-            ts = data.get("server_ts", "")
-            return ts if isinstance(ts, str) else ""
-        except (json.JSONDecodeError, OSError):
-            return ""
+        data = self._cursor_store.load()
+        ts = data.get("server_ts", "") if isinstance(data, dict) else ""
+        return ts if isinstance(ts, str) else ""
 
     def _save_cursor(self) -> None:
         """游标更新后落盘。多线程调用有锁。"""
         try:
-            self._cursor_path.parent.mkdir(parents=True, exist_ok=True)
             with self._cursor_lock:
-                self._cursor_path.write_text(
-                    json.dumps({"server_ts": self._cloud_last_ts},
-                               ensure_ascii=False),
-                    encoding="utf-8",
-                )
+                self._cursor_store.set("server_ts", self._cloud_last_ts)
         except OSError:
             pass
 
