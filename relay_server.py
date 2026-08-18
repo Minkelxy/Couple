@@ -453,8 +453,12 @@ def api_send() -> tuple:
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         return jsonify({"ok": False, "error": "invalid JSON body"}), 400
-    pair_code = (data.get("pair_code") or "").strip()
-    channel_id = (data.get("channel_id") or "").strip()
+    pair_value = data.get("pair_code", "")
+    channel_value = data.get("channel_id", "")
+    pair_code = "" if pair_value is None else _clean_text(pair_value)
+    channel_id = "" if channel_value is None else _clean_text(channel_value)
+    if pair_code is None or channel_id is None:
+        return jsonify({"ok": False, "error": "pair_code/channel_id 类型非法"}), 400
     if not pair_code and not channel_id:
         return jsonify({"ok": False, "error": "missing pair_code 或 channel_id"}), 400
 
