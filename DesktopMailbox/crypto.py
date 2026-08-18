@@ -10,6 +10,7 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 
 from . import config
+from common_utils import atomic_write_bytes
 
 _KEY_PATH = config.DATA_DIR / "key.key"
 _fernet: Fernet | None = None
@@ -19,7 +20,7 @@ def _load_or_create_key() -> bytes:
     if _KEY_PATH.exists():
         return _KEY_PATH.read_bytes()
     key = Fernet.generate_key()
-    _KEY_PATH.write_bytes(key)
+    atomic_write_bytes(_KEY_PATH, key)
     return key
 
 
