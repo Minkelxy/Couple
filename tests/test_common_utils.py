@@ -3,10 +3,17 @@ import threading
 import unittest
 from pathlib import Path
 
-from common_utils import AtomicJsonStore
+from common_utils import AtomicJsonStore, atomic_write_bytes
 
 
 class AtomicJsonStoreTests(unittest.TestCase):
+    def test_atomic_write_bytes_round_trips(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "secret.bin"
+            atomic_write_bytes(path, b"encrypted payload")
+
+            self.assertEqual(path.read_bytes(), b"encrypted payload")
+
     def test_missing_default_is_not_shared_with_callers(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = AtomicJsonStore(Path(tmp) / "state.json", {"items": []})

@@ -180,6 +180,34 @@ def _lock_for_json_path(path: Path) -> threading.RLock:
         return lock
 
 
+def atomic_write_bytes(path, data: bytes) -> None:
+    """Write bytes through a same-directory temporary file and atomic replace."""
+    target = Path(path)
+    lock = _lock_for_json_path(target)
+    with lock:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp_name = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                dir=target.parent,
+                prefix=f".{target.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as tmp:
+                tmp_name = tmp.name
+                tmp.write(data)
+                tmp.flush()
+                os.fsync(tmp.fileno())
+            os.replace(tmp_name, target)
+        finally:
+            if tmp_name:
+                try:
+                    os.unlink(tmp_name)
+                except FileNotFoundError:
+                    pass
+
+
 class AtomicJsonStore:
     """线程安全的原子写 JSON 存储。
 

@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any
 
 import app_paths
-from common_utils import AtomicJsonStore, log_exception, log_warning
+from common_utils import AtomicJsonStore, atomic_write_bytes, log_exception, log_warning
 from DesktopMailbox.crypto import decrypt as _fernet_dec, encrypt as _fernet_enc
 
 IDENTITY_DIR = app_paths.CONFIG_DIR / "identity"
@@ -152,7 +152,7 @@ def ensure_identity() -> tuple[bytes, object]:
         sk_bytes = sk.private_bytes_raw()
         pk_bytes = sk.public_key().public_bytes_raw()
         # 落盘：sk 用 Fernet 加密（至少不比裸存差）
-        _MY_SK_ENC.write_bytes(_fernet_enc(sk_bytes))
+        atomic_write_bytes(_MY_SK_ENC, _fernet_enc(sk_bytes))
         _MY_PK_STORE.save({
             "pk_b64": _b64e(pk_bytes),
             "created_at": __import__("datetime").datetime.now().isoformat(timespec="seconds"),
