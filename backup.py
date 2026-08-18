@@ -1,7 +1,9 @@
 """数据备份与恢复：打包 AppData 数据为 zip，支持从 zip 恢复。"""
 from __future__ import annotations
+import os
 import zipfile
 import shutil
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -23,6 +25,19 @@ def export_backup(dest_zip: Path) -> Path:
     # 确保以 .zip 结尾
     if not dest_zip.suffix == ".zip":
         dest_zip = dest_zip.with_suffix(".zip")
+    final_dest = dest_zip
+    final_dest.parent.mkdir(parents=True, exist_ok=True)
+    for stale_path in final_dest.parent.glob(f".{final_dest.name}.*.tmp"):
+        try:
+            stale_path.unlink()
+        except OSError:
+            pass
+    with tempfile.NamedTemporaryFile(
+        mode="wb", dir=final_dest.parent, prefix=f".{final_dest.name}.",
+        suffix=".tmp", delete=False,
+    ) as temp_file:
+        temp_path = Path(temp_file.name)
+    dest_zip = temp_path
     
     with zipfile.ZipFile(dest_zip, "w", zipfile.ZIP_DEFLATED) as zf:
         # config 目录
@@ -31,7 +46,8 @@ def export_backup(dest_zip: Path) -> Path:
         _add_dir_to_zip(zf, app_paths.DATA_DIR, "data")
         # images 目录（相框图片，可能很大，但用户选择备份时包含）
         _add_dir_to_zip(zf, app_paths.IMAGES_DIR, "images")
-    return dest_zip
+    os.replace(dest_zip, final_dest)
+    return final_dest
 
 def _add_dir_to_zip(zf: zipfile.ZipFile, src_dir: Path, arcname_prefix: str):
     """递归把目录加到 zip。"""

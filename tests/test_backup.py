@@ -63,6 +63,24 @@ class BackupExtractionTests(unittest.TestCase):
 
             self.assertFalse((cache_dir / "_restore_tmp").exists())
 
+    def test_export_writes_parent_and_preserves_existing_archive_on_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "nested" / "backup.zip"
+            with patch.object(backup, "_add_dir_to_zip", side_effect=OSError("disk full")):
+                with self.assertRaises(OSError):
+                    backup.export_backup(target)
+
+            self.assertFalse(target.exists())
+            self.assertEqual(len(list(target.parent.glob(".backup.zip.*.tmp"))), 1)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b"old archive")
+            with patch.object(backup, "_add_dir_to_zip", side_effect=OSError("disk full")):
+                with self.assertRaises(OSError):
+                    backup.export_backup(target)
+            self.assertEqual(target.read_bytes(), b"old archive")
+            self.assertEqual(len(list(target.parent.glob(".backup.zip.*.tmp"))), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
