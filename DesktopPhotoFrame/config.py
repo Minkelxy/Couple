@@ -1,8 +1,8 @@
 """配置管理：从 config.json 读写，缺失项用默认值补齐。"""
 from __future__ import annotations
 
-import json
 import shutil
+from copy import deepcopy
 from pathlib import Path
 
 import app_paths
@@ -10,7 +10,7 @@ from common_utils import AtomicJsonStore, log_exception, log_warning
 from version import resource_path
 
 CONFIG_PATH = app_paths.CONFIG_DIR / "photo_frame.json"
-# 原子写存储实例：仅 save 路径走原子写，load 仍走自带默认值合并逻辑
+# 配置统一通过原子 JSON 存储读写。
 _store = AtomicJsonStore(CONFIG_PATH, default={})
 DEFAULT_ALBUM_NAME = "默认相册"
 _IMG_EXTS = {
@@ -127,17 +127,22 @@ def _ensure_default_album_entry(albums: list[dict]) -> list[dict]:
 
 
 def load() -> dict:
-    data = dict(DEFAULTS)
+    data = deepcopy(DEFAULTS)
     app_paths.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    if CONFIG_PATH.exists():
-        try:
-            data.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
-        except (json.JSONDecodeError, OSError) as e:
-            log_warning("相框配置加载失败，使用默认值: %s", e)
+    stored = _store.load()
+    if isinstance(stored, dict):
+        data.update(stored)
     # 类型校正：防止 JSON 里写出错误类型
-    data["interval_sec"] = max(3, int(data.get("interval_sec", 15)))
-    data["window_width"] = max(160, int(data.get("window_width", 320)))
-    data["window_height"] = max(200, int(data.get("window_height", 400)))
+    for key, minimum in (
+        ("interval_sec", 3),
+        ("window_width", 160),
+        ("window_height", 200),
+    ):
+        try:
+            value = int(data.get(key, DEFAULTS[key]))
+        except (TypeError, ValueError):
+            value = DEFAULTS[key]
+        data[key] = max(minimum, value)
     anniv = data.get("anniversaries", [])
     data["anniversaries"] = anniv if isinstance(anniv, list) else []
     data["albums"] = _ensure_default_album_entry(data.get("albums", []))
