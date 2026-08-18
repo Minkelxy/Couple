@@ -26,6 +26,27 @@ class PartnerJsonStoreTests(unittest.TestCase):
             finally:
                 movie_store._partner_status_store = original_store
 
+    def test_movie_partner_status_normalizes_invalid_values(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_store = movie_store._partner_status_store
+            movie_store._partner_status_store = AtomicJsonStore(
+                Path(tmp) / "partner_status.json", {}
+            )
+            try:
+                movie_store.set_partner_status("12", "invalid", 99)
+                self.assertEqual(
+                    movie_store.get_partner_status("12"),
+                    {"status": None, "rating": None},
+                )
+
+                movie_store.set_partner_status("13", "watched", 8)
+                self.assertEqual(
+                    movie_store.get_partner_status("13"),
+                    {"status": "watched", "rating": 8},
+                )
+            finally:
+                movie_store._partner_status_store = original_store
+
     def test_checkin_partner_load_uses_atomic_store(self):
         with tempfile.TemporaryDirectory() as tmp:
             original_store = checkin_store._partner_store

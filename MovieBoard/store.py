@@ -157,6 +157,10 @@ def _save_partner_status(data: dict) -> None:
 def set_partner_status(movie_id, status, rating) -> None:
     """记录对方对某影片的状态/评分。movie_id 统一转 str。"""
     mid = str(movie_id)
+    if status not in {None, STATUS_WANT, STATUS_WATCHING, STATUS_WATCHED}:
+        status = None
+    if not isinstance(rating, int) or isinstance(rating, bool) or not 1 <= rating <= 10:
+        rating = None
     data = _load_partner_status()
     data[mid] = {"status": status, "rating": rating}
     _save_partner_status(data)
