@@ -24,7 +24,7 @@ def _load_sent() -> set[str]:
 
 
 def _mark_sent(*keys: str) -> None:
-    """原子写入 sent_log，先于 write_letter 调用（占坑语义：崩溃后也不重复）。"""
+    """原子写入 sent_log，记录已经成功创建的纪念日信件。"""
     s = _load_sent()
     for k in keys:
         s.add(k)
@@ -51,13 +51,11 @@ def check_and_deliver() -> list[dict]:
         # 兜底稳定 key：基于 date + title，anniv_id 变更（编辑 id 或删除 id 回退 date）
         # 后只要 date + title 不变仍能命中，防同年重复投递
         stable_key = f"stable-{year}-{anniv.get('date')}-{anniv.get('title', '')}"
-        # 多线程串行化 + 先占坑：先把 key 写入 sent_log，再落信
-        # 崩溃/异常发生在中间：下一次启动 key 已在 sent_log 里，不会重复投递
+        # 多线程串行化检查；写入成功后再记录 sent_log，失败时允许重试。
         with _LOCK:
             sent = _load_sent()
             if key in sent or stable_key in sent:
                 continue
-            _mark_sent(key, stable_key)
         # 送达时间：当天指定小时，已过则立即
         try:
             hour = int(anniv.get("deliver_hour", 8))
@@ -74,9 +72,15 @@ def check_and_deliver() -> list[dict]:
                 title=anniv.get("title", "纪念日"),
                 content=anniv.get("content", ""),
                 deliver_at=deliver_at,
+                message_id=stable_key,
             )
         except Exception:
-            log_exception("纪念日信件写入失败，sent_log 已占坑避免重启重复: %s", key)
+            log_exception("纪念日信件写入失败，将在下次启动重试: %s", key)
             continue
+        try:
+            _mark_sent(key, stable_key)
+        except Exception:
+            # 信件已经创建；下次运行会用 message_id 找回它并重试记录。
+            log_exception("纪念日 sent_log 写入失败，将在下次启动重试: %s", key)
         created.append(meta)
     return created
