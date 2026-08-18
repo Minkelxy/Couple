@@ -80,7 +80,11 @@ def _post(server: str, path: str, payload: dict) -> dict | None:
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+            result = json.loads(resp.read().decode("utf-8"))
+            if not isinstance(result, dict):
+                log_warning("pairing POST %s 返回非对象 JSON", path)
+                return None
+            return result
     except Exception as e:
         log_exception("pairing POST %s 失败: %s", path, e)
         return None
@@ -92,7 +96,11 @@ def _get(server: str, path: str, params: dict) -> dict | None:
         url = server.rstrip("/") + path + ("?" + qs if qs else "")
         req = urllib.request.Request(url, method="GET")
         with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+            result = json.loads(resp.read().decode("utf-8"))
+            if not isinstance(result, dict):
+                log_warning("pairing GET %s 返回非对象 JSON", path)
+                return None
+            return result
     except Exception as e:
         log_exception("pairing GET %s 失败: %s", path, e)
         return None
