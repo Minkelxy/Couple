@@ -1,7 +1,6 @@
 """打卡日历主窗口。"""
 from __future__ import annotations
 
-import shutil
 import time
 import weakref
 from datetime import date
@@ -16,7 +15,13 @@ from PySide6.QtWidgets import (
 )
 
 import app_paths
-from common_utils import check_attachment_size, log_warning, safe_filename, safe_image_ext
+from common_utils import (
+    atomic_copy_file,
+    check_attachment_size,
+    log_warning,
+    safe_filename,
+    safe_image_ext,
+)
 
 from . import store
 from .calendar_widget import CalendarWidget
@@ -200,7 +205,7 @@ class CheckinEditor(QDialog):
         except Exception:
             # PIL 处理失败（非图片格式或损坏等），回退到直接复制原图
             try:
-                shutil.copy2(path, dest)
+                atomic_copy_file(path, dest)
             except OSError:
                 QMessageBox.warning(self, "错误", "无法读取该图片，请换一张。")
                 return

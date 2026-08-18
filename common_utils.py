@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import threading
 import tempfile
 from copy import deepcopy
@@ -200,6 +201,35 @@ def atomic_write_bytes(path, data: bytes) -> None:
                 tmp.flush()
                 os.fsync(tmp.fileno())
             os.replace(tmp_name, target)
+        finally:
+            if tmp_name:
+                try:
+                    os.unlink(tmp_name)
+                except FileNotFoundError:
+                    pass
+
+
+def atomic_copy_file(source, target) -> None:
+    """Copy a file through a same-directory temporary file and replace."""
+    source_path = Path(source)
+    target_path = Path(target)
+    lock = _lock_for_json_path(target_path)
+    with lock:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_name = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                dir=target_path.parent,
+                prefix=f".{target_path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as tmp:
+                tmp_name = tmp.name
+            shutil.copy2(source_path, tmp_name)
+            with open(tmp_name, "r+b") as tmp:
+                os.fsync(tmp.fileno())
+            os.replace(tmp_name, target_path)
         finally:
             if tmp_name:
                 try:

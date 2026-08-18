@@ -2,8 +2,9 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
-from common_utils import AtomicJsonStore, atomic_write_bytes
+from common_utils import AtomicJsonStore, atomic_copy_file, atomic_write_bytes
 
 
 class AtomicJsonStoreTests(unittest.TestCase):
@@ -13,6 +14,24 @@ class AtomicJsonStoreTests(unittest.TestCase):
             atomic_write_bytes(path, b"encrypted payload")
 
             self.assertEqual(path.read_bytes(), b"encrypted payload")
+
+    def test_atomic_copy_file_preserves_existing_target_on_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source.bin"
+            target = root / "target.bin"
+            source.write_bytes(b"new payload")
+            target.write_bytes(b"old payload")
+            atomic_copy_file(source, target)
+            self.assertEqual(target.read_bytes(), b"new payload")
+            target.write_bytes(b"old payload")
+
+            with mock.patch("common_utils.shutil.copy2", side_effect=OSError("disk full")):
+                with self.assertRaises(OSError):
+                    atomic_copy_file(source, target)
+
+            self.assertEqual(target.read_bytes(), b"old payload")
+            self.assertEqual(list(root.glob(".target.bin.*.tmp")), [])
 
     def test_missing_default_is_not_shared_with_callers(self):
         with tempfile.TemporaryDirectory() as tmp:

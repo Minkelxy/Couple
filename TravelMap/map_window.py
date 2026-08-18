@@ -5,7 +5,6 @@
 """
 from __future__ import annotations
 
-import shutil
 import time
 from datetime import date
 from pathlib import Path
@@ -19,7 +18,13 @@ from PySide6.QtWidgets import (
 )
 
 import app_paths
-from common_utils import check_attachment_size, log_warning, safe_filename, safe_image_ext
+from common_utils import (
+    atomic_copy_file,
+    check_attachment_size,
+    log_warning,
+    safe_filename,
+    safe_image_ext,
+)
 
 from . import city_picker
 from . import store
@@ -202,7 +207,7 @@ class _EditCityDialog(QDialog):
         filename = f"{int(time.time())}_{Path(path).name}"
         dest = app_paths.TRAVEL_DIR / "photos" / filename
         try:
-            shutil.copy2(path, dest)
+            atomic_copy_file(path, dest)
         except OSError:
             QMessageBox.warning(self, "错误", "无法读取该照片，请换一张。")
             return

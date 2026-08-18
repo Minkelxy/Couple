@@ -4,14 +4,11 @@
 """
 from __future__ import annotations
 
-import os
-import shutil
-import tempfile
 from datetime import datetime
 from pathlib import Path
 
 import app_paths
-from common_utils import atomic_write_bytes, log_exception
+from common_utils import atomic_copy_file, atomic_write_bytes, log_exception
 
 # 旧路径（相对项目根目录，即本文件所在目录）
 _PROJECT_ROOT = Path(__file__).parent
@@ -55,31 +52,7 @@ def _migrate_file(src: Path, dst: Path) -> None:
         return
     if dst.exists():
         return
-    _copy_file_atomic(src, dst)
-
-
-def _copy_file_atomic(src: Path, dst: Path) -> None:
-    """复制文件到目标目录，避免中断时留下看似完整的半文件。"""
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    temp_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            dir=dst.parent,
-            prefix=f".{dst.name}.",
-            delete=False,
-        ) as temp:
-            temp_path = Path(temp.name)
-        shutil.copy2(src, temp_path)
-        with temp_path.open("rb") as temp:
-            os.fsync(temp.fileno())
-        os.replace(temp_path, dst)
-        temp_path = None
-    finally:
-        if temp_path is not None:
-            try:
-                temp_path.unlink()
-            except FileNotFoundError:
-                pass
+    atomic_copy_file(src, dst)
 
 
 def _migrate_tree(src: Path, dst: Path) -> None:
@@ -94,7 +67,7 @@ def _migrate_tree(src: Path, dst: Path) -> None:
             target = dst / rel
             if target.exists():
                 continue
-            _copy_file_atomic(item, target)
+            atomic_copy_file(item, target)
 
 
 def _migrate_images(src: Path, dst: Path) -> None:
@@ -109,7 +82,7 @@ def _migrate_images(src: Path, dst: Path) -> None:
         target = dst / item.name
         if target.exists():
             continue
-        _copy_file_atomic(item, target)
+        atomic_copy_file(item, target)
 
 
 def run_migration() -> bool:
@@ -198,4 +171,4 @@ def _seed_default_album() -> None:
         target = _NEW_IMAGES_DIR / item.name
         if target.exists():
             continue
-        _copy_file_atomic(item, target)
+        atomic_copy_file(item, target)

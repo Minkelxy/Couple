@@ -7,20 +7,16 @@ import migration
 
 
 class MigrationTests(unittest.TestCase):
-    def test_atomic_copy_does_not_replace_destination_when_copy_fails(self):
+    def test_file_migration_delegates_to_atomic_copy(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            source = root / "source.bin"
-            destination = root / "destination.bin"
-            source.write_bytes(b"new content")
-            destination.write_bytes(b"old content")
+            source = Path(tmp) / "source.bin"
+            destination = Path(tmp) / "destination.bin"
+            source.write_bytes(b"content")
 
-            with patch.object(migration.shutil, "copy2", side_effect=OSError("disk full")):
-                with self.assertRaises(OSError):
-                    migration._copy_file_atomic(source, destination)
+            with patch.object(migration, "atomic_copy_file") as copy:
+                migration._migrate_file(source, destination)
 
-            self.assertEqual(destination.read_bytes(), b"old content")
-            self.assertEqual(list(root.glob(".destination.bin.*")), [])
+            copy.assert_called_once_with(source, destination)
 
     def test_successful_migration_writes_marker_atomically(self):
         with tempfile.TemporaryDirectory() as tmp:

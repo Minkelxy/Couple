@@ -1,12 +1,11 @@
 """配置管理：从 config.json 读写，缺失项用默认值补齐。"""
 from __future__ import annotations
 
-import shutil
 from copy import deepcopy
 from pathlib import Path
 
 import app_paths
-from common_utils import AtomicJsonStore, log_exception, log_warning
+from common_utils import AtomicJsonStore, atomic_copy_file, log_exception, log_warning
 from version import resource_path
 
 CONFIG_PATH = app_paths.CONFIG_DIR / "photo_frame.json"
@@ -61,7 +60,7 @@ def ensure_default_album() -> Path:
         if dst.exists():
             continue
         try:
-            shutil.copy2(src, dst)
+            atomic_copy_file(src, dst)
             copied += 1
         except OSError as e:
             log_exception("默认相册示例图复制失败 %s -> %s: %s", src, dst, e)
