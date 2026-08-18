@@ -44,6 +44,7 @@ import secrets
 import sqlite3
 import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -144,8 +145,18 @@ def _get_db() -> sqlite3.Connection:
     return conn
 
 
+@contextmanager
+def _db_session():
+    """Open a database connection and always close it after the operation."""
+    conn = _get_db()
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
 def _init_db() -> None:
-    with _LOCK, _get_db() as conn:
+    with _LOCK, _db_session() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS letters (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -181,7 +192,7 @@ def _channel_members(channel_id: str) -> tuple[str, str] | None:
     """返回 (member_a_pk_b64, member_b_pk_b64)。"""
     if not _is_valid_pair(channel_id):
         return None
-    with _get_db() as conn:
+    with _db_session() as conn:
         row = conn.execute(
             "SELECT member_a_pk, member_b_pk FROM channels WHERE channel_id = ?",
             (channel_id,),
@@ -203,7 +214,7 @@ def _channel_resolve_pk(channel_id: str, pk_fp: str) -> str | None:
 
 
 def _save_channel(channel_id: str, pk_a: str, pk_b: str) -> None:
-    with _LOCK, _get_db() as conn:
+    with _LOCK, _db_session() as conn:
         conn.execute(
             "INSERT OR IGNORE INTO channels(channel_id, member_a_pk, member_b_pk, created_at) "
             "VALUES (?, ?, ?, ?)",
@@ -400,7 +411,7 @@ def health() -> tuple:
 
 @app.route("/")
 def index() -> tuple:
-    with _get_db() as conn:
+    with _db_session() as conn:
         total = conn.execute("SELECT COUNT(*) AS n FROM letters").fetchone()["n"]
         pairs = conn.execute(
             "SELECT pair_code, COUNT(*) AS n FROM letters GROUP BY pair_code"
@@ -463,7 +474,7 @@ def api_send() -> tuple:
             }), 400
         bucket_key = pair_code
 
-    with _LOCK, _get_db() as conn:
+    with _LOCK, _db_session() as conn:
         conn.execute(
             "INSERT INTO letters(pair_code, meta, content_b64, attach_b64, attach_ext, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?)",
@@ -516,20 +527,24 @@ def api_poll() -> tuple:
     if since and not _is_valid_since(since):
         since = ""
 
-    with _get_db() as conn:
+    # Bound the query to a timestamp captured before opening the DB snapshot.
+    # Messages arriving after this point must be left for the next poll.
+    poll_until = _now_iso()
+    with _db_session() as conn:
         if since:
             rows = conn.execute(
                 "SELECT meta, content_b64, attach_b64, attach_ext, created_at "
                 "FROM letters WHERE pair_code = ? AND created_at > ? "
+                "AND created_at <= ? "
                 "ORDER BY created_at ASC LIMIT ?",
-                (bucket_key, since, _POLL_BATCH_LIMIT + 1),
+                (bucket_key, since, poll_until, _POLL_BATCH_LIMIT + 1),
             ).fetchall()
         else:
             rows = conn.execute(
                 "SELECT meta, content_b64, attach_b64, attach_ext, created_at "
-                "FROM letters WHERE pair_code = ? "
+                "FROM letters WHERE pair_code = ? AND created_at <= ? "
                 "ORDER BY created_at ASC LIMIT ?",
-                (bucket_key, _POLL_BATCH_LIMIT + 1),
+                (bucket_key, poll_until, _POLL_BATCH_LIMIT + 1),
             ).fetchall()
 
     has_more = len(rows) > _POLL_BATCH_LIMIT
@@ -537,7 +552,9 @@ def api_poll() -> tuple:
         rows = rows[:_POLL_BATCH_LIMIT]
 
     letters = []
-    server_ts = _now_iso()
+    # Never advance beyond the snapshot. With no rows, returning poll_until is
+    # safe because rows created after it are excluded from this query.
+    server_ts = poll_until
     for r in rows:
         letters.append({
             "meta": _loads(r["meta"]),
@@ -561,7 +578,7 @@ def _cleanup_loop() -> None:
         # 1. 信件：30 天过期
         cutoff = (datetime.utcnow() - timedelta(days=_RETENTION_DAYS)).isoformat(timespec="microseconds")
         try:
-            with _LOCK, _get_db() as conn:
+            with _LOCK, _db_session() as conn:
                 deleted = 0
                 while True:
                     cur = conn.execute(
