@@ -12,10 +12,8 @@
 """
 from __future__ import annotations
 
-import json
-
 import app_paths
-from common_utils import AtomicJsonStore, log_warning
+from common_utils import AtomicJsonStore
 
 _DATA_PATH = app_paths.TRAVEL_DIR / "cities.json"
 
@@ -28,22 +26,18 @@ _VALID_SOURCES = {"self", "partner"}
 
 def _load() -> list[dict]:
     """从磁盘加载城市列表，文件缺失或损坏时返回空列表。"""
-    if not _DATA_PATH.exists():
-        return []
-    try:
-        items = json.loads(_DATA_PATH.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as e:
-        log_warning("旅行地图数据加载失败，返回空列表: %s", e)
-        return []
+    items = _store.load()
     if not isinstance(items, list):
         return []
     # 向后兼容：旧记录无 source 字段或值非法，统一补默认值 "self"
+    valid_items = []
     for it in items:
         if not isinstance(it, dict):
             continue
         if it.get("source") not in _VALID_SOURCES:
             it["source"] = "self"
-    return items
+        valid_items.append(it)
+    return valid_items
 
 
 def _save(items: list[dict]) -> None:
