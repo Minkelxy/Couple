@@ -7,10 +7,25 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from DesktopMailbox.sync import SyncHub, _recv_exact
+import identity
 from common_utils import AtomicJsonStore
 
 
 class SyncTransportTests(unittest.TestCase):
+    def test_on_received_drops_non_string_event_type(self):
+        hub = SimpleNamespace(
+            _my_id="local-id",
+            event_received=Mock(),
+        )
+        with patch.object(
+            identity,
+            "get_status",
+            return_value=SimpleNamespace(paired=False),
+        ):
+            SyncHub.on_received(hub, {"type": ["invalid"]}, "", b"", "")
+
+        hub.event_received.emit.assert_not_called()
+
     def test_cloud_cursor_is_persisted_atomically(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = AtomicJsonStore(Path(tmp) / "cursor.json", {})

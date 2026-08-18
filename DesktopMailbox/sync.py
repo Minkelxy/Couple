@@ -47,6 +47,7 @@ DEFAULT_PORT = 52014
 _MAX_HEADER_BYTES = 64 * 1024
 _MAX_CONTENT_BYTES = 1 * 1024 * 1024
 _MAX_ATTACHMENT_EXT_BYTES = 32
+_MAX_EVENT_TYPE_BYTES = 64
 
 
 def _ensure_uuid(cfg_dir: Path) -> str:
@@ -418,6 +419,9 @@ class SyncHub(QObject):
                 return
 
         msg_type = meta.get("type", "letter")
+        if not isinstance(msg_type, str) or len(msg_type) > _MAX_EVENT_TYPE_BYTES:
+            log_warning("收到非法同步事件类型，已丢弃: %r", msg_type)
+            return
         if msg_type != "letter":
             self.event_received.emit(msg_type, meta, content, attachment or b"", att_ext)
             return
