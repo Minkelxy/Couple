@@ -33,6 +33,10 @@ def _path_for(identifier: str, suffix: str) -> Path:
     return GOMOKU_DIR / f"{identifier}{suffix}"
 
 
+def _normalize_moves(value) -> list[dict]:
+    return [move for move in value if isinstance(move, dict)] if isinstance(value, list) else []
+
+
 def save_game(winner: str, moves: list[dict], played_at: str) -> str:
     """保存一局对局，返回 game_id。
 
@@ -57,6 +61,8 @@ def append_move(session_id: str, move_dict: dict) -> None:
 
     move_dict 含 {session_id, color, row, col, ts, source}。
     """
+    if not isinstance(move_dict, dict):
+        raise ValueError("move must be a JSON object")
     _ensure_dir()
     path = _path_for(session_id, ".jsonl")
     with path.open("a", encoding="utf-8") as f:
@@ -87,7 +93,11 @@ def load_moves(session_id: str) -> list[dict]:
         if not line:
             continue
         try:
-            moves.append(json.loads(line))
+            move = json.loads(line)
+            if isinstance(move, dict):
+                moves.append(move)
+            else:
+                log_warning("璺宠繃闈炴姝ラ璁板綍 %s", session_id)
         except json.JSONDecodeError as e:
             log_warning("跳过损坏的棋谱行 %s: %s", session_id, e)
             continue
@@ -107,10 +117,11 @@ def list_games() -> list[dict]:
         if not isinstance(rec, dict):
             log_warning("跳过格式错误的对局记录 %s", p.name)
             continue
+        moves = _normalize_moves(rec.get("moves"))
         result.append({
             "id": rec.get("id", p.stem),
             "winner": rec.get("winner", ""),
-            "moves_count": rec.get("moves_count", len(rec.get("moves", []))),
+            "moves_count": len(moves),
             "played_at": rec.get("played_at", ""),
         })
     result.sort(key=lambda r: r.get("played_at", ""), reverse=True)
@@ -126,4 +137,9 @@ def get_game(game_id: str) -> dict | None:
     if not path.exists():
         return None
     record = AtomicJsonStore(path, default={}).load()
-    return record if isinstance(record, dict) else None
+    if not isinstance(record, dict):
+        return None
+    normalized = dict(record)
+    normalized["moves"] = _normalize_moves(record.get("moves"))
+    normalized["moves_count"] = len(normalized["moves"])
+    return normalized

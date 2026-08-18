@@ -43,9 +43,26 @@ class GomokuStoreTests(unittest.TestCase):
                 store.append_move("session-1", {"row": 2, "col": 3})
                 path = Path(tmp) / "session-1.jsonl"
                 with path.open("a", encoding="utf-8") as f:
-                    f.write("not json\n")
+                    f.write("not json\n[]\n")
 
                 self.assertEqual(store.load_moves("session-1"), [{"row": 2, "col": 3}])
+            finally:
+                store.GOMOKU_DIR = original_dir
+
+    def test_history_normalizes_malformed_move_lists(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_dir = store.GOMOKU_DIR
+            store.GOMOKU_DIR = Path(tmp)
+            try:
+                (Path(tmp) / "game.json").write_text(
+                    '{"id":"game","moves":[{"row":1}, "bad", 3],'
+                    '"moves_count":99,"played_at":"2026-08-18T12:00:00"}',
+                    encoding="utf-8",
+                )
+
+                self.assertEqual(store.get_game("game")["moves"], [{"row": 1}])
+                self.assertEqual(store.get_game("game")["moves_count"], 1)
+                self.assertEqual(store.list_games()[0]["moves_count"], 1)
             finally:
                 store.GOMOKU_DIR = original_dir
 
