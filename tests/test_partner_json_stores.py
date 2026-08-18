@@ -23,6 +23,9 @@ class PartnerJsonStoreTests(unittest.TestCase):
 
                 movie_store._partner_status_store.save(["invalid"])
                 self.assertEqual(movie_store._load_partner_status(), {})
+
+                movie_store._partner_status_store.save({"12": "invalid"})
+                self.assertEqual(movie_store._load_partner_status(), {})
             finally:
                 movie_store._partner_status_store = original_store
 
@@ -61,6 +64,9 @@ class PartnerJsonStoreTests(unittest.TestCase):
                 )
 
                 checkin_store._partner_store.save("invalid")
+                self.assertEqual(checkin_store._load_partner(), {})
+
+                checkin_store._partner_store.save({"2026-08-18": "invalid"})
                 self.assertEqual(checkin_store._load_partner(), {})
             finally:
                 checkin_store._partner_store = original_store

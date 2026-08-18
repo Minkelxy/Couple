@@ -147,7 +147,13 @@ _partner_status_store = AtomicJsonStore(PARTNER_STATUS_FILE, default={})
 
 def _load_partner_status() -> dict:
     data = _partner_status_store.load()
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        return {}
+    return {
+        key: value
+        for key, value in data.items()
+        if isinstance(key, str) and isinstance(value, dict)
+    }
 
 
 def _save_partner_status(data: dict) -> None:

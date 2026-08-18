@@ -107,7 +107,13 @@ def get_recent(days: int = 30) -> list[dict]:
 def _load_partner() -> dict:
     """读取对方打卡记录，返回 {date_str: record}。"""
     data = _partner_store.load()
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        return {}
+    return {
+        key: value
+        for key, value in data.items()
+        if isinstance(key, str) and isinstance(value, dict)
+    }
 
 
 def _save_partner(data: dict) -> None:
@@ -150,7 +156,8 @@ def get_partner_range(start_date: str, end_date: str) -> list[dict]:
     data = _load_partner()
     result = [
         rec for rec in data.values()
-        if start_date <= rec.get("date", "") <= end_date
+        if isinstance(rec.get("date", ""), str)
+        and start_date <= rec.get("date", "") <= end_date
     ]
     result.sort(key=lambda r: r.get("date", ""))
     return result
