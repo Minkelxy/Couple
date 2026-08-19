@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import collections
 import base64
+import binascii
 import json
 import socket
 import socketserver
@@ -325,24 +326,31 @@ class SyncHub(QObject):
             if item_id in self._outbox_inflight:
                 return
             self._outbox_inflight.add(item_id)
-        item = next((x for x in self._outbox.due() if x.get("id") == item_id), None)
-        if item is None:
-            with self._outbox_lock:
-                self._outbox_inflight.discard(item_id)
-            return
+        started = False
         try:
-            attachment = base64.b64decode(item.get("attachment_b64", ""), validate=True)
-        except (ValueError, TypeError):
-            self._outbox.remove(item_id)
-            with self._outbox_lock:
-                self._outbox_inflight.discard(item_id)
-            return
-        threading.Thread(
-            target=self._cloud_send_blocking,
-            args=(item["meta"], item.get("content", ""), attachment,
-                  item.get("attachment_ext", ""), silent, item_id),
-            daemon=True,
-        ).start()
+            item = next((x for x in self._outbox.due() if x.get("id") == item_id), None)
+            if item is None:
+                return
+            try:
+                attachment = base64.b64decode(
+                    item.get("attachment_b64", ""), validate=True
+                )
+            except (binascii.Error, ValueError, TypeError):
+                self._outbox.remove(item_id)
+                return
+            threading.Thread(
+                target=self._cloud_send_blocking,
+                args=(item["meta"], item.get("content", ""), attachment,
+                      item.get("attachment_ext", ""), silent, item_id),
+                daemon=True,
+            ).start()
+            started = True
+        except Exception:
+            log_exception("启动云 outbox 项失败: %s", item_id)
+        finally:
+            if not started:
+                with self._outbox_lock:
+                    self._outbox_inflight.discard(item_id)
 
     def _flush_cloud_outbox(self) -> None:
         for item in self._outbox.due():

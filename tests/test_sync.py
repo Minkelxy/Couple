@@ -12,6 +12,26 @@ from common_utils import AtomicJsonStore
 
 
 class SyncTransportTests(unittest.TestCase):
+    def test_invalid_outbox_attachment_does_not_leave_inflight_marker(self):
+        item_id = "message-1"
+        hub = SimpleNamespace(
+            _outbox=SimpleNamespace(
+                due=Mock(return_value=[{
+                    "id": item_id,
+                    "meta": {},
+                    "attachment_b64": "not-base64",
+                }]),
+                remove=Mock(side_effect=OSError("disk full")),
+            ),
+            _outbox_lock=threading.Lock(),
+            _outbox_inflight=set(),
+        )
+
+        with patch("DesktopMailbox.sync.log_exception"):
+            SyncHub._start_cloud_outbox_item(hub, item_id)
+
+        self.assertNotIn(item_id, hub._outbox_inflight)
+
     def test_cloud_outbox_inflight_is_cleared_when_persist_fails(self):
         item_id = "message-1"
         hub = SimpleNamespace(
