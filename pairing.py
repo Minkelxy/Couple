@@ -281,7 +281,18 @@ class PairingSession:
 
     def _confirm_loop(self) -> None:
         # 先 POST confirm（我方这一半），再轮询等对方也 confirm
-        _post(self._server, "/api/pairing/confirm", self._confirm_payload())
+        confirm_resp = _post(
+            self._server, "/api/pairing/confirm", self._confirm_payload()
+        )
+        if confirm_resp is not None and not confirm_resp.get("ok"):
+            self._emit(PairingProgress(
+                PairingPhase.FAILED,
+                token=self._token,
+                error_message=confirm_resp.get("message") or "服务器拒绝了配对确认",
+            ))
+            return
+        if confirm_resp is None:
+            log_warning("配对确认请求未收到有效响应，将继续轮询配对状态")
         deadline = time.time() + 120  # 120s 留给用户念数字
         while time.time() < deadline and not self._stop.is_set():
             resp = _get(self._server, "/api/pairing/poll", {

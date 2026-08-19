@@ -1,4 +1,5 @@
 import json
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -20,6 +21,27 @@ class _Response:
 
 
 class PairingTransportTests(unittest.TestCase):
+    def test_confirm_rejection_is_reported_immediately(self):
+        progress = []
+        session = pairing.PairingSession.__new__(pairing.PairingSession)
+        session._server = "https://relay.invalid"
+        session._token = "ABC234"
+        session._role = "host"
+        session._stop = threading.Event()
+        session._cb = progress.append
+
+        with patch.object(session, "_confirm_payload", return_value={"token": "ABC234"}), \
+                patch.object(
+                    pairing,
+                    "_post",
+                    return_value={"ok": False, "message": "nonce 不匹配"},
+                ), patch.object(pairing, "_get") as get:
+            session._confirm_loop()
+
+        self.assertEqual(progress[0].phase, pairing.PairingPhase.FAILED)
+        self.assertEqual(progress[0].error_message, "nonce 不匹配")
+        get.assert_not_called()
+
     def test_post_and_get_reject_non_object_json(self):
         with patch.object(
             pairing.urllib.request,
