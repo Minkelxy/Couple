@@ -18,6 +18,13 @@ DEFAULT_BACKUP_DIR = Path(
 BACKUP_RETENTION_COUNT = 14
 
 
+def _assert_integrity(conn: sqlite3.Connection) -> None:
+    result = conn.execute("PRAGMA integrity_check").fetchone()
+    if not result or result[0] != "ok":
+        detail = result[0] if result else "no result"
+        raise sqlite3.DatabaseError(f"SQLite integrity check failed: {detail}")
+
+
 def backup_database(
     db_path: Path = DEFAULT_DB_PATH,
     backup_dir: Path = DEFAULT_BACKUP_DIR,
@@ -40,7 +47,10 @@ def backup_database(
         with closing(sqlite3.connect(str(db_path))) as source, closing(
             sqlite3.connect(tmp_name)
         ) as dest:
+            _assert_integrity(source)
             source.backup(dest)
+            dest.commit()
+            _assert_integrity(dest)
         os.chmod(tmp_name, 0o600)
         os.replace(tmp_name, target)
     finally:

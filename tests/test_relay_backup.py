@@ -47,6 +47,15 @@ class RelayBackupTests(unittest.TestCase):
 
             self.assertEqual(len(list(backup_dir.glob("letters-*.db"))), 14)
 
+    def test_backup_rejects_invalid_sqlite_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db_path = root / "letters.db"
+            db_path.write_bytes(b"not a sqlite database")
+
+            with self.assertRaises(sqlite3.DatabaseError):
+                backup_database(db_path, root / "backups")
+
 
 if __name__ == "__main__":
     unittest.main()
