@@ -219,6 +219,18 @@ def _init_db() -> None:
                 guest      TEXT
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS pairing_members (
+                token      TEXT NOT NULL,
+                role       TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                pk_b64     TEXT NOT NULL,
+                nickname   TEXT NOT NULL,
+                nonce      TEXT NOT NULL,
+                confirmed  INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (token, role)
+            )
+        """)
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_chan_a ON channels(member_a_pk)"
         )
@@ -269,11 +281,32 @@ def _pairing_expire_locked() -> None:
     cutoff = time.time() - _PAIRING_TTL_SEC
     with _db_session() as conn:
         conn.execute("DELETE FROM pairing_sessions WHERE created_at < ?", (cutoff,))
+        conn.execute("DELETE FROM pairing_members WHERE created_at < ?", (cutoff,))
         conn.commit()
 
 
 def _load_pairing(token: str) -> dict | None:
     with _db_session() as conn:
+        members = conn.execute(
+            "SELECT role, created_at, pk_b64, nickname, nonce, confirmed "
+            "FROM pairing_members WHERE token = ?",
+            (token,),
+        ).fetchall()
+        if members:
+            state = {
+                "created_at": min(row["created_at"] for row in members),
+                "host": None,
+                "guest": None,
+            }
+            for row in members:
+                if row["role"] in ("host", "guest"):
+                    state[row["role"]] = {
+                        "pk_b64": row["pk_b64"],
+                        "nickname": row["nickname"],
+                        "nonce": row["nonce"],
+                        "confirmed": bool(row["confirmed"]),
+                    }
+            return state
         row = conn.execute(
             "SELECT created_at, host, guest FROM pairing_sessions WHERE token = ?",
             (token,),
@@ -295,6 +328,28 @@ def _load_pairing(token: str) -> dict | None:
 
 def _save_pairing(token: str, state: dict) -> None:
     with _db_session() as conn:
+        for role in ("host", "guest"):
+            slot = state.get(role)
+            if slot is None:
+                continue
+            conn.execute(
+                "INSERT INTO pairing_members "
+                "(token, role, created_at, pk_b64, nickname, nonce, confirmed) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(token, role) DO UPDATE SET "
+                "created_at=excluded.created_at, pk_b64=excluded.pk_b64, "
+                "nickname=excluded.nickname, nonce=excluded.nonce, "
+                "confirmed=excluded.confirmed",
+                (
+                    token,
+                    role,
+                    float(state.get("created_at", time.time())),
+                    slot["pk_b64"],
+                    slot.get("nickname", ""),
+                    slot["nonce"],
+                    1 if slot.get("confirmed") else 0,
+                ),
+            )
         conn.execute(
             "INSERT INTO pairing_sessions(token, created_at, host, guest) "
             "VALUES (?, ?, ?, ?) ON CONFLICT(token) DO UPDATE SET "
@@ -316,7 +371,39 @@ def _save_pairing(token: str, state: dict) -> None:
 def _delete_pairing(token: str) -> None:
     with _db_session() as conn:
         conn.execute("DELETE FROM pairing_sessions WHERE token = ?", (token,))
+        conn.execute("DELETE FROM pairing_members WHERE token = ?", (token,))
         conn.commit()
+
+
+def _declare_pairing(token: str, role: str, pk_b64: str, nickname: str) -> tuple[str | None, bool]:
+    """Atomically claim one role; return (nonce, conflict)."""
+    now = time.time()
+    nonce = secrets.token_urlsafe(12)
+    with _db_session() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT pk_b64 FROM pairing_members WHERE token = ? AND role = ?",
+            (token, role),
+        ).fetchone()
+        if row is not None and row["pk_b64"] != pk_b64:
+            conn.rollback()
+            return None, True
+        conn.execute(
+            "INSERT INTO pairing_members "
+            "(token, role, created_at, pk_b64, nickname, nonce, confirmed) "
+            "VALUES (?, ?, ?, ?, ?, ?, 0) "
+            "ON CONFLICT(token, role) DO UPDATE SET "
+            "created_at=excluded.created_at, nickname=excluded.nickname, "
+            "nonce=excluded.nonce, confirmed=0",
+            (token, role, now, pk_b64, nickname, nonce),
+        )
+        conn.execute(
+            "INSERT INTO pairing_sessions(token, created_at) VALUES (?, ?) "
+            "ON CONFLICT(token) DO UPDATE SET created_at=excluded.created_at",
+            (token, now),
+        )
+        conn.commit()
+    return nonce, False
 
 
 def _clean_text(value) -> str | None:
@@ -349,31 +436,10 @@ def api_pairing_declare() -> tuple:
 
     with _PAIRING_LOCK:
         _pairing_expire_locked()
-        state = _load_pairing(token)
-        if state is None:
-            state = {
-                "host": None,
-                "guest": None,
-                "created_at": time.time(),
-            }
-        slot = state.get(role)
-        # 允许同角色同 pk 重复 declare（刷新 TTL 用），但不同 pk 抢同一 slot 拒绝
-        if slot is not None and slot["pk_b64"] != pk_b64:
-            return jsonify({
-                "ok": False,
-                "message": "该 token 已被另一个设备占用，请双方重新生成配对码。",
-            }), 409
-        nonce = secrets.token_urlsafe(12)
-        state[role] = {
-            "pk_b64": pk_b64,
-            "nickname": nickname,
-            "nonce": nonce,
-            "confirmed": False,
-        }
-        # 每次 declare 刷新该 token 的 TTL（等价于重置到 now）
-        state["created_at"] = time.time()
-        _save_pairing(token, state)
-    return jsonify({"ok": True, "nonce": nonce}), 200
+        nonce, conflict = _declare_pairing(token, role, pk_b64, nickname)
+        if conflict:
+            return jsonify({"ok": False, "message": "token is already claimed"}), 409
+        return jsonify({"ok": True, "nonce": nonce}), 200
 
 
 @app.route("/api/pairing/poll")

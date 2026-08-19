@@ -1,4 +1,5 @@
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import tempfile
 import unittest
 from pathlib import Path
@@ -97,6 +98,31 @@ class RelayPollingTests(unittest.TestCase):
                 relay_server._DB_PATH = original_db_path
                 relay_server._PAIRING.clear()
                 relay_server._PAIRING.update(original_pairing)
+
+    def test_pairing_role_claim_is_atomic_across_threads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_db_path = relay_server._DB_PATH
+            relay_server._DB_PATH = Path(tmp) / "letters.db"
+            try:
+                relay_server._init_db()
+                keys = [Ed25519PrivateKey.generate() for _ in range(6)]
+                public_keys = [
+                    base64.urlsafe_b64encode(
+                        key.public_key().public_bytes_raw()
+                    ).rstrip(b"=").decode("ascii")
+                    for key in keys
+                ]
+                with ThreadPoolExecutor(max_workers=6) as pool:
+                    results = list(pool.map(
+                        lambda pk: relay_server._declare_pairing(
+                            "ABC234", "host", pk, "client"
+                        ),
+                        public_keys,
+                    ))
+                self.assertEqual(sum(1 for nonce, conflict in results if nonce), 1)
+                self.assertEqual(sum(1 for nonce, conflict in results if conflict), 5)
+            finally:
+                relay_server._DB_PATH = original_db_path
 
     def test_send_rejects_non_string_bucket_fields(self):
         client = relay_server.app.test_client()
