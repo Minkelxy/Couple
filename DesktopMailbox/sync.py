@@ -295,14 +295,25 @@ class SyncHub(QObject):
     ) -> None:
         if self._cloud_client is None:
             return
-        ok = self._cloud_client.send_letter(meta, content, attachment, att_ext)
-        if item_id is not None:
-            if ok:
-                self._outbox.remove(item_id)
-            else:
-                self._outbox.retry(item_id)
-            with self._outbox_lock:
-                self._outbox_inflight.discard(item_id)
+        ok = False
+        try:
+            ok = self._cloud_client.send_letter(meta, content, attachment, att_ext)
+        except Exception:
+            log_exception("云同步发送线程异常")
+        finally:
+            if item_id is not None:
+                try:
+                    if ok:
+                        self._outbox.remove(item_id)
+                    else:
+                        self._outbox.retry(item_id)
+                except Exception:
+                    # Keep the item for a later flush; a successful send is
+                    # still safe to repeat because relay deduplicates message_id.
+                    log_exception("云 outbox 状态持久化失败: %s", item_id)
+                finally:
+                    with self._outbox_lock:
+                        self._outbox_inflight.discard(item_id)
         if not silent:
             if ok:
                 self.send_result.emit(True, "已通过云中转寄出")

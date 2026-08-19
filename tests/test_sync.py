@@ -12,6 +12,27 @@ from common_utils import AtomicJsonStore
 
 
 class SyncTransportTests(unittest.TestCase):
+    def test_cloud_outbox_inflight_is_cleared_when_persist_fails(self):
+        item_id = "message-1"
+        hub = SimpleNamespace(
+            _cloud_client=SimpleNamespace(send_letter=Mock(return_value=True)),
+            _outbox=SimpleNamespace(
+                remove=Mock(side_effect=OSError("disk full")),
+                retry=Mock(),
+            ),
+            _outbox_lock=threading.Lock(),
+            _outbox_inflight={item_id},
+            send_result=Mock(),
+        )
+
+        with patch("DesktopMailbox.sync.log_exception"):
+            SyncHub._cloud_send_blocking(
+                hub, {}, "hello", b"", "", item_id=item_id
+            )
+
+        self.assertNotIn(item_id, hub._outbox_inflight)
+        hub.send_result.emit.assert_called_once_with(True, "已通过云中转寄出")
+
     def test_on_received_drops_non_string_event_type(self):
         hub = SimpleNamespace(
             _my_id="local-id",
