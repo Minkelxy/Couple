@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import tempfile
+import argparse
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
@@ -72,5 +73,53 @@ def backup_database(
     return target
 
 
+def restore_database(backup_path: Path, db_path: Path) -> Path:
+    """Restore a verified backup into db_path using an atomic replacement.
+
+    The relay service must be stopped before calling this function so no live
+    connection can recreate WAL sidecar files after the replacement.
+    """
+    backup_path = Path(backup_path)
+    db_path = Path(db_path)
+    if not backup_path.exists():
+        raise FileNotFoundError(backup_path)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{db_path.name}.", suffix=".restore.tmp", dir=db_path.parent
+    )
+    os.close(fd)
+    try:
+        with closing(sqlite3.connect(str(backup_path))) as source, closing(
+            sqlite3.connect(tmp_name)
+        ) as dest:
+            _assert_integrity(source)
+            source.backup(dest)
+            dest.commit()
+            _assert_integrity(dest)
+        os.chmod(tmp_name, 0o600)
+        os.replace(tmp_name, db_path)
+        for suffix in ("-wal", "-shm"):
+            try:
+                (Path(f"{db_path}{suffix}")).unlink()
+            except FileNotFoundError:
+                pass
+    finally:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+    return db_path
+
+
 if __name__ == "__main__":
-    print(backup_database())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("command", choices=("backup", "restore"), nargs="?", default="backup")
+    parser.add_argument("backup_path", nargs="?", type=Path)
+    parser.add_argument("--db", dest="db_path", type=Path, default=DEFAULT_DB_PATH)
+    args = parser.parse_args()
+    if args.command == "backup":
+        print(backup_database(args.db_path))
+    elif args.backup_path is None:
+        parser.error("restore requires BACKUP_PATH")
+    else:
+        print(restore_database(args.backup_path, args.db_path))

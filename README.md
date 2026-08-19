@@ -82,6 +82,15 @@ sudo systemctl enable --now couple-relay-backup.timer
 
 服务只监听 `127.0.0.1:5000`，公网访问应经过 nginx + HTTPS；`/health` 可用于 systemd 外部监控和 nginx 上游检查。备份 timer 每日使用 SQLite online backup 创建一致副本，默认保留最近 14 份。生产环境不要开启 legacy `pair_code` 模式。
 
+恢复备份前必须停止 relay，避免运行中的连接重新生成旧 WAL 文件：
+
+```bash
+sudo systemctl stop couple-relay
+sudo /opt/couple-relay/.venv/bin/python /opt/couple-relay/relay_backup.py restore \
+  /var/backups/couple-relay/letters-YYYYMMDD-HHMMSS.db
+sudo systemctl start couple-relay
+```
+
 Ubuntu 服务器建议把 `COUPLE_RELAY_DB` 指向持久化数据盘，并使用 nginx + HTTPS 反向代理。配对会话和信件都保存在 SQLite；配对状态不依赖单个 Gunicorn worker，服务重载或 worker 切换不会中断两台 Windows 客户端的配对流程。
 旧版 `pair_code` 接口默认关闭；仅在迁移旧客户端时临时设置 `COUPLE_RELAY_ALLOW_LEGACY_PAIR_CODE=1`，迁移完成后应立即移除。
 

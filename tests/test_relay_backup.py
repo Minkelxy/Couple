@@ -5,7 +5,7 @@ from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
-from relay_backup import backup_database
+from relay_backup import backup_database, restore_database
 
 
 class RelayBackupTests(unittest.TestCase):
@@ -55,6 +55,29 @@ class RelayBackupTests(unittest.TestCase):
 
             with self.assertRaises(sqlite3.DatabaseError):
                 backup_database(db_path, root / "backups")
+
+    def test_restore_replaces_database_from_verified_backup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source.db"
+            target = root / "letters.db"
+            with closing(sqlite3.connect(source)) as conn:
+                conn.execute("CREATE TABLE letters (body TEXT)")
+                conn.execute("INSERT INTO letters VALUES ('restored')")
+                conn.commit()
+            backup = backup_database(source, root / "backups")
+            with closing(sqlite3.connect(target)) as conn:
+                conn.execute("CREATE TABLE letters (body TEXT)")
+                conn.execute("INSERT INTO letters VALUES ('old')")
+                conn.commit()
+
+            restore_database(backup, target)
+
+            with closing(sqlite3.connect(target)) as conn:
+                self.assertEqual(
+                    conn.execute("SELECT body FROM letters").fetchone()[0],
+                    "restored",
+                )
 
 
 if __name__ == "__main__":
