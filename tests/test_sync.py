@@ -12,6 +12,23 @@ from common_utils import AtomicJsonStore
 
 
 class SyncTransportTests(unittest.TestCase):
+    def test_stop_closes_lan_server_socket(self):
+        server = Mock()
+        hub = SimpleNamespace(
+            _stopped=False,
+            _heartbeat_timer=None,
+            _cloud_timer=None,
+            _server=server,
+            _thread=None,
+        )
+
+        SyncHub.stop(hub)
+
+        self.assertTrue(hub._stopped)
+        self.assertIsNone(hub._server)
+        server.shutdown.assert_called_once_with()
+        server.server_close.assert_called_once_with()
+
     def test_invalid_outbox_attachment_does_not_leave_inflight_marker(self):
         item_id = "message-1"
         hub = SimpleNamespace(

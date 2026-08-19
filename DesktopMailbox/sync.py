@@ -192,9 +192,15 @@ class SyncHub(QObject):
         if self._cloud_timer is not None:
             self._cloud_timer.cancel()
             self._cloud_timer = None
-        if self._server is not None:
-            self._server.shutdown()
-            self._server = None
+        server = self._server
+        self._server = None
+        if server is not None:
+            server.shutdown()
+            server.server_close()
+        thread = self._thread
+        self._thread = None
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=2)
 
     # ---------- 客户端 ----------
 
