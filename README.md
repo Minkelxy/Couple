@@ -66,17 +66,21 @@ Ubuntu 生产部署模板位于 `deploy/`，包括 systemd 服务、环境变量
 ```bash
 sudo useradd --system --home /opt/couple-relay --shell /usr/sbin/nologin couple-relay
 sudo install -d -o couple-relay -g couple-relay /opt/couple-relay /var/lib/couple-relay
-sudo cp relay_server.py relay-requirements.txt /opt/couple-relay/
+sudo cp relay_server.py relay_backup.py relay-requirements.txt /opt/couple-relay/
 sudo python3 -m venv /opt/couple-relay/.venv
 sudo /opt/couple-relay/.venv/bin/pip install -r /opt/couple-relay/relay-requirements.txt
-sudo chown -R couple-relay:couple-relay /opt/couple-relay /var/lib/couple-relay
+sudo install -d -o couple-relay -g couple-relay /var/backups/couple-relay
+sudo chown -R couple-relay:couple-relay /opt/couple-relay /var/lib/couple-relay /var/backups/couple-relay
 sudo install -m 0644 deploy/couple-relay.service /etc/systemd/system/couple-relay.service
+sudo install -m 0644 deploy/couple-relay-backup.service /etc/systemd/system/couple-relay-backup.service
+sudo install -m 0644 deploy/couple-relay-backup.timer /etc/systemd/system/couple-relay-backup.timer
 sudo install -m 0600 deploy/couple-relay.env.example /etc/couple-relay.env
 sudo systemctl daemon-reload
 sudo systemctl enable --now couple-relay
+sudo systemctl enable --now couple-relay-backup.timer
 ```
 
-服务只监听 `127.0.0.1:5000`，公网访问应经过 nginx + HTTPS；`/health` 可用于 systemd 外部监控和 nginx 上游检查。生产环境不要开启 legacy `pair_code` 模式。
+服务只监听 `127.0.0.1:5000`，公网访问应经过 nginx + HTTPS；`/health` 可用于 systemd 外部监控和 nginx 上游检查。备份 timer 每日使用 SQLite online backup 创建一致副本，默认保留最近 14 份。生产环境不要开启 legacy `pair_code` 模式。
 
 Ubuntu 服务器建议把 `COUPLE_RELAY_DB` 指向持久化数据盘，并使用 nginx + HTTPS 反向代理。配对会话和信件都保存在 SQLite；配对状态不依赖单个 Gunicorn worker，服务重载或 worker 切换不会中断两台 Windows 客户端的配对流程。
 旧版 `pair_code` 接口默认关闭；仅在迁移旧客户端时临时设置 `COUPLE_RELAY_ALLOW_LEGACY_PAIR_CODE=1`，迁移完成后应立即移除。

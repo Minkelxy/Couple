@@ -1,0 +1,66 @@
+"""Create consistent SQLite backups for the Ubuntu relay service."""
+from __future__ import annotations
+
+import os
+import sqlite3
+import tempfile
+from contextlib import closing
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+DEFAULT_DB_PATH = Path(
+    os.environ.get("COUPLE_RELAY_DB", "/var/lib/couple-relay/letters.db")
+).expanduser()
+DEFAULT_BACKUP_DIR = Path(
+    os.environ.get("COUPLE_RELAY_BACKUP_DIR", "/var/backups/couple-relay")
+).expanduser()
+BACKUP_RETENTION_COUNT = 14
+
+
+def backup_database(
+    db_path: Path = DEFAULT_DB_PATH,
+    backup_dir: Path = DEFAULT_BACKUP_DIR,
+    now: datetime | None = None,
+) -> Path:
+    """Atomically create a consistent backup and remove old backup files."""
+    db_path = Path(db_path)
+    backup_dir = Path(backup_dir)
+    if not db_path.exists():
+        raise FileNotFoundError(db_path)
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    current = now or datetime.now(timezone.utc)
+    stamp = current.strftime("%Y%m%d-%H%M%S")
+    target = backup_dir / f"letters-{stamp}.db"
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{target.name}.", suffix=".tmp", dir=backup_dir
+    )
+    os.close(fd)
+    try:
+        with closing(sqlite3.connect(str(db_path))) as source, closing(
+            sqlite3.connect(tmp_name)
+        ) as dest:
+            source.backup(dest)
+        os.chmod(tmp_name, 0o600)
+        os.replace(tmp_name, target)
+    finally:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+
+    backups = sorted(
+        backup_dir.glob("letters-*.db"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    for old in backups[BACKUP_RETENTION_COUNT:]:
+        try:
+            old.unlink()
+        except OSError:
+            pass
+    return target
+
+
+if __name__ == "__main__":
+    print(backup_database())

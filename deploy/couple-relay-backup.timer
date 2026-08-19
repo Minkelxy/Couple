@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily CoupleSuite relay database backup
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+Persistent=true
+Unit=couple-relay-backup.service
+
+[Install]
+WantedBy=timers.target

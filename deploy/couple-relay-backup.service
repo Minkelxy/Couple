@@ -1,0 +1,16 @@
+[Unit]
+Description=Backup CoupleSuite relay SQLite database
+After=couple-relay.service
+
+[Service]
+Type=oneshot
+User=couple-relay
+Group=couple-relay
+WorkingDirectory=/opt/couple-relay
+EnvironmentFile=/etc/couple-relay.env
+ExecStart=/opt/couple-relay/.venv/bin/python /opt/couple-relay/relay_backup.py
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/backups/couple-relay
+NoNewPrivileges=true
