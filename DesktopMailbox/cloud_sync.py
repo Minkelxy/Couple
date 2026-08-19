@@ -40,6 +40,14 @@ def _normalize_server_ts(value) -> str:
     return value
 
 
+def _normalize_cursor(value) -> str:
+    if isinstance(value, int) and value >= 0:
+        return str(value)
+    if isinstance(value, str) and value.isdigit():
+        return value
+    return ""
+
+
 def _b64e(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
 
@@ -118,7 +126,8 @@ class CloudSyncClient:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 raw = resp.read()
             data = json.loads(raw.decode("utf-8"))
-            server_ts = _normalize_server_ts(data.get("server_ts", ""))
+            server_cursor = _normalize_cursor(data.get("server_cursor"))
+            server_ts = server_cursor or _normalize_server_ts(data.get("server_ts", ""))
             letters: list[dict] = []
             for item in data.get("letters", []):
                 try:
@@ -136,7 +145,11 @@ class CloudSyncClient:
 
     def _build_poll_url(self, since_ts: str) -> str:
         status = idm.get_status()
-        params: dict[str, str] = {"since": since_ts}
+        params: dict[str, str] = {}
+        if since_ts.isdigit():
+            params["cursor"] = since_ts
+        else:
+            params["since"] = since_ts
         if status.paired and status.channel_id and self._server:
             params["channel_id"] = status.channel_id
             my_pk_bytes, sk = idm.ensure_identity()

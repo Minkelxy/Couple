@@ -62,6 +62,7 @@ COUPLE_RELAY_DB=/srv/couple/letters.db gunicorn --workers 2 --bind 0.0.0.0:5000 
 ```
 
 Ubuntu 服务器建议把 `COUPLE_RELAY_DB` 指向持久化数据盘，并使用 nginx + HTTPS 反向代理。配对会话和信件都保存在 SQLite；配对状态不依赖单个 Gunicorn worker，服务重载或 worker 切换不会中断两台 Windows 客户端的配对流程。
+旧版 `pair_code` 接口默认关闭；仅在迁移旧客户端时临时设置 `COUPLE_RELAY_ALLOW_LEGACY_PAIR_CODE=1`，迁移完成后应立即移除。
 
 接口约定：
 

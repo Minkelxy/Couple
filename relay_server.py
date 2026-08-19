@@ -55,6 +55,9 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from flask import Flask, jsonify, request
 
 app = Flask(__name__)
+app.config["ALLOW_LEGACY_PAIR_CODE"] = os.environ.get(
+    "COUPLE_RELAY_ALLOW_LEGACY_PAIR_CODE", "0"
+) == "1"
 
 _DB_PATH = Path(
     os.environ.get("COUPLE_RELAY_DB", str(Path(__file__).with_name("letters.db")))
@@ -70,6 +73,7 @@ _MAX_PAIR_LEN = 128
 _MIN_PAIR_LEN = 3
 _MAX_ATTACH_EXT_LEN = 32
 _MAX_SINCE_LEN = 64
+_MAX_CURSOR_LEN = 20
 _POLL_BATCH_LIMIT = 1000  # 单次 poll 最多返回 1000 封，避免断网很久回来的 OOM
 # 整个请求体大小上限：content 2MB + attach 100MB + meta 64KB + pair_code 128B + 余量
 _MAX_REQUEST_BYTES = 110 * 1024 * 1024
@@ -108,6 +112,16 @@ def _is_valid_since(since: str) -> bool:
     if len(since) > _MAX_SINCE_LEN:
         return False
     return _SINCE_RE.match(since) is not None
+
+
+def _parse_cursor(value: str) -> int | None:
+    if not value or len(value) > _MAX_CURSOR_LEN or not value.isdigit():
+        return None
+    try:
+        cursor = int(value)
+    except ValueError:
+        return None
+    return cursor if cursor >= 0 else None
 
 
 def _is_valid_pk_b64(pk_b64: str) -> bool:
@@ -284,7 +298,9 @@ def _save_pairing(token: str, state: dict) -> None:
         conn.execute(
             "INSERT INTO pairing_sessions(token, created_at, host, guest) "
             "VALUES (?, ?, ?, ?) ON CONFLICT(token) DO UPDATE SET "
-            "created_at=excluded.created_at, host=excluded.host, guest=excluded.guest",
+            "created_at=excluded.created_at, "
+            "host=COALESCE(excluded.host, pairing_sessions.host), "
+            "guest=COALESCE(excluded.guest, pairing_sessions.guest)",
             (
                 token,
                 float(state.get("created_at", time.time())),
@@ -507,15 +523,11 @@ def health() -> tuple:
 def index() -> tuple:
     with _db_session() as conn:
         total = conn.execute("SELECT COUNT(*) AS n FROM letters").fetchone()["n"]
-        pairs = conn.execute(
-            "SELECT pair_code, COUNT(*) AS n FROM letters GROUP BY pair_code"
-        ).fetchall()
         chans = conn.execute("SELECT COUNT(*) AS n FROM channels").fetchone()["n"]
     return jsonify({
         "service": "CoupleSuite 云中转 (公钥身份版本)",
         "total_letters": total,
         "paired_channels": chans,
-        "pairs": [dict(p) for p in pairs],
         "time": _now_iso(),
     }), 200
 
@@ -565,7 +577,9 @@ def api_send() -> tuple:
             return jsonify({"ok": False, "error": f"channel 校验失败：{msg}"}), 403
         bucket_key = channel_id
     else:
-        # legacy 路径：仍然保留 pair_code 模式（过渡期），不做签名，只是 pair_code 基本校验
+        # Legacy is opt-in because pair_code alone is not authentication.
+        if not app.config["ALLOW_LEGACY_PAIR_CODE"]:
+            return jsonify({"ok": False, "error": "legacy pair_code mode is disabled"}), 410
         if not _is_valid_pair(pair_code):
             return jsonify({
                 "ok": False,
@@ -590,6 +604,10 @@ def api_poll() -> tuple:
     channel_id = (request.args.get("channel_id") or "").strip()
     pk_fp = (request.args.get("pk_fp") or "").strip()
     sig_b64 = (request.args.get("sig_b64") or "").strip()
+    cursor_raw = (request.args.get("cursor") or "").strip()
+    cursor = _parse_cursor(cursor_raw)
+    if cursor_raw and cursor is None:
+        return jsonify({"ok": False, "error": "invalid cursor"}), 400
     if not pair_code and not channel_id:
         return jsonify({"ok": False, "error": "missing pair_code 或 channel_id"}), 400
 
@@ -608,13 +626,16 @@ def api_poll() -> tuple:
                 "ok": False,
                 "error": "该 channel_id 下找不到你这个发送方（请双方先完成配对向导，或走旧 pair_code 模式）",
             }), 403
-        # 签名原文：poll_auth|channel_id|pk_fp|since
+        # 签名原文同时覆盖分页游标，避免篡改读取位置。
         since = (request.args.get("since") or "").strip()
-        plain = f"poll_auth|{channel_id}|{pk_fp}|{since}".encode("utf-8")
+        auth_position = cursor_raw if cursor is not None else since
+        plain = f"poll_auth|{channel_id}|{pk_fp}|{auth_position}".encode("utf-8")
         if not _verify_sig(member_pk, sig_b64, plain):
             return jsonify({"ok": False, "error": "poll 签名校验失败"}), 403
         bucket_key = channel_id
     else:
+        if not app.config["ALLOW_LEGACY_PAIR_CODE"]:
+            return jsonify({"ok": False, "error": "legacy pair_code mode is disabled"}), 410
         if not _is_valid_pair(pair_code):
             return jsonify({
                 "ok": False,
@@ -631,9 +652,16 @@ def api_poll() -> tuple:
     # Messages arriving after this point must be left for the next poll.
     poll_until = _now_iso()
     with _db_session() as conn:
-        if since:
+        if cursor is not None:
             rows = conn.execute(
-                "SELECT meta, content_b64, attach_b64, attach_ext, created_at "
+                "SELECT id, meta, content_b64, attach_b64, attach_ext, created_at "
+                "FROM letters WHERE pair_code = ? AND id > ? "
+                "AND created_at <= ? ORDER BY id ASC LIMIT ?",
+                (bucket_key, cursor, poll_until, _POLL_BATCH_LIMIT + 1),
+            ).fetchall()
+        elif since:
+            rows = conn.execute(
+                "SELECT id, meta, content_b64, attach_b64, attach_ext, created_at "
                 "FROM letters WHERE pair_code = ? AND created_at > ? "
                 "AND created_at <= ? "
                 "ORDER BY created_at ASC LIMIT ?",
@@ -641,7 +669,7 @@ def api_poll() -> tuple:
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT meta, content_b64, attach_b64, attach_ext, created_at "
+                "SELECT id, meta, content_b64, attach_b64, attach_ext, created_at "
                 "FROM letters WHERE pair_code = ? AND created_at <= ? "
                 "ORDER BY created_at ASC LIMIT ?",
                 (bucket_key, poll_until, _POLL_BATCH_LIMIT + 1),
@@ -655,6 +683,7 @@ def api_poll() -> tuple:
     # Never advance beyond the snapshot. With no rows, returning poll_until is
     # safe because rows created after it are excluded from this query.
     server_ts = poll_until
+    server_cursor = cursor if cursor is not None else 0
     for r in rows:
         letters.append({
             "meta": _loads(r["meta"]),
@@ -662,9 +691,14 @@ def api_poll() -> tuple:
             "attachment_base64": r["attach_b64"],
             "attachment_ext": r["attach_ext"],
         })
+        server_cursor = r["id"]
         if r["created_at"] > server_ts:
             server_ts = r["created_at"]
-    result = {"server_ts": server_ts, "letters": letters}
+    result = {
+        "server_ts": server_ts,
+        "server_cursor": str(server_cursor),
+        "letters": letters,
+    }
     if has_more:
         result["has_more"] = True
     return jsonify(result), 200

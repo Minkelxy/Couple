@@ -10,6 +10,25 @@ import relay_server
 
 
 class RelayPollingTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._legacy_setting = relay_server.app.config["ALLOW_LEGACY_PAIR_CODE"]
+        relay_server.app.config["ALLOW_LEGACY_PAIR_CODE"] = True
+
+    @classmethod
+    def tearDownClass(cls):
+        relay_server.app.config["ALLOW_LEGACY_PAIR_CODE"] = cls._legacy_setting
+
+    def test_legacy_pair_code_is_disabled_by_default(self):
+        relay_server.app.config["ALLOW_LEGACY_PAIR_CODE"] = False
+        try:
+            response = relay_server.app.test_client().get(
+                "/api/poll?pair_code=test-pair"
+            )
+            self.assertEqual(response.status_code, 410)
+        finally:
+            relay_server.app.config["ALLOW_LEGACY_PAIR_CODE"] = True
+
     def test_pairing_endpoints_reject_non_object_json(self):
         client = relay_server.app.test_client()
 
@@ -173,6 +192,45 @@ class RelayPollingTests(unittest.TestCase):
                     )
                 self.assertEqual(received.status_code, 200)
                 self.assertEqual(len(received.get_json()["letters"]), 1)
+            finally:
+                relay_server._DB_PATH = original_db_path
+
+    def test_cursor_paginates_more_than_one_batch_without_skipping(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_db_path = relay_server._DB_PATH
+            relay_server._DB_PATH = Path(tmp) / "letters.db"
+            try:
+                relay_server._init_db()
+                client = relay_server.app.test_client()
+                for index in range(1001):
+                    response = client.post(
+                        "/api/send",
+                        json={
+                            "pair_code": "batch-test",
+                            "meta": {"type": "letter", "index": index},
+                            "content_base64": "aA==",
+                            "attachment_base64": "",
+                            "attachment_ext": "",
+                        },
+                    )
+                    self.assertEqual(response.status_code, 200)
+
+                cursor = "0"
+                indexes = []
+                while True:
+                    response = client.get(
+                        "/api/poll",
+                        query_string={"pair_code": "batch-test", "cursor": cursor},
+                    )
+                    self.assertEqual(response.status_code, 200)
+                    payload = response.get_json()
+                    indexes.extend(item["meta"]["index"] for item in payload["letters"])
+                    next_cursor = payload["server_cursor"]
+                    if next_cursor == cursor and not payload.get("has_more"):
+                        break
+                    cursor = next_cursor
+
+                self.assertEqual(indexes, list(range(1001)))
             finally:
                 relay_server._DB_PATH = original_db_path
 

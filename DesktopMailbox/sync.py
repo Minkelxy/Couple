@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import collections
+import base64
 import json
 import socket
 import socketserver
@@ -40,6 +41,7 @@ from common_utils import (
 
 from . import letter_store
 from .cloud_sync import CloudSyncClient
+from .outbox import OutboxStore
 
 
 DEFAULT_PORT = 52014
@@ -104,6 +106,9 @@ class SyncHub(QObject):
         self._cursor_store = AtomicJsonStore(self._cursor_path, {})
         self._cloud_last_ts: str = self._load_cursor()
         self._cursor_lock = threading.Lock()
+        self._outbox = OutboxStore(app_paths.DATA_DIR / "cloud_outbox.json")
+        self._outbox_lock = threading.Lock()
+        self._outbox_inflight: set[str] = set()
         # 接收端签名 LRU 去重：容量 1024，线程安全（on_received 在 socket 线程与云轮询线程中可能并发）
         # 基于 meta.sig_b64 去重，防止同一签名消息被重复落盘/触发事件
         self._seen_sigs: collections.OrderedDict[str, None] = collections.OrderedDict()
@@ -144,6 +149,7 @@ class SyncHub(QObject):
                 started = True
         if mode in ("cloud", "both") and self._cloud_client is not None:
             self._cloud_schedule_poll()
+            self._flush_cloud_outbox()
             started = True
             # 启动心跳广播（仅云模式有意义，告知对方本机在线）
             self._heartbeat_schedule()
@@ -154,14 +160,25 @@ class SyncHub(QObject):
     def _load_cursor(self) -> str:
         """启动时加载上一次的游标，避免重启重复投递。"""
         data = self._cursor_store.load()
-        ts = data.get("server_ts", "") if isinstance(data, dict) else ""
+        if not isinstance(data, dict):
+            return ""
+        cursor = data.get("cursor")
+        if isinstance(cursor, int) and cursor >= 0:
+            return str(cursor)
+        if isinstance(cursor, str) and cursor.isdigit():
+            return cursor
+        ts = data.get("server_ts", "")
         return ts if isinstance(ts, str) else ""
 
     def _save_cursor(self) -> None:
         """游标更新后落盘。多线程调用有锁。"""
         try:
             with self._cursor_lock:
-                self._cursor_store.set("server_ts", self._cloud_last_ts)
+                self._cursor_store.update(
+                    server_ts=self._cloud_last_ts,
+                    cursor=(int(self._cloud_last_ts)
+                            if self._cloud_last_ts.isdigit() else None),
+                )
         except OSError:
             pass
 
@@ -212,12 +229,8 @@ class SyncHub(QObject):
                 )
                 t.start()
         if mode in ("cloud", "both") and self._cloud_client is not None:
-            t = threading.Thread(
-                target=self._cloud_send_blocking,
-                args=(meta, content, att, att_ext, silent),
-                daemon=True,
-            )
-            t.start()
+            item_id = self._outbox.enqueue(meta, content, att, att_ext)
+            self._start_cloud_outbox_item(item_id, silent=silent)
 
     def send_event(
         self,
@@ -277,15 +290,51 @@ class SyncHub(QObject):
         attachment: bytes,
         att_ext: str,
         silent: bool = False,
+        item_id: str | None = None,
     ) -> None:
         if self._cloud_client is None:
             return
         ok = self._cloud_client.send_letter(meta, content, attachment, att_ext)
+        if item_id is not None:
+            if ok:
+                self._outbox.remove(item_id)
+            else:
+                self._outbox.retry(item_id)
+            with self._outbox_lock:
+                self._outbox_inflight.discard(item_id)
         if not silent:
             if ok:
                 self.send_result.emit(True, "已通过云中转寄出")
             else:
                 self.send_result.emit(False, "云同步失败")
+
+    def _start_cloud_outbox_item(self, item_id: str, silent: bool = True) -> None:
+        with self._outbox_lock:
+            if item_id in self._outbox_inflight:
+                return
+            self._outbox_inflight.add(item_id)
+        item = next((x for x in self._outbox.due() if x.get("id") == item_id), None)
+        if item is None:
+            with self._outbox_lock:
+                self._outbox_inflight.discard(item_id)
+            return
+        try:
+            attachment = base64.b64decode(item.get("attachment_b64", ""), validate=True)
+        except (ValueError, TypeError):
+            self._outbox.remove(item_id)
+            with self._outbox_lock:
+                self._outbox_inflight.discard(item_id)
+            return
+        threading.Thread(
+            target=self._cloud_send_blocking,
+            args=(item["meta"], item.get("content", ""), attachment,
+                  item.get("attachment_ext", ""), silent, item_id),
+            daemon=True,
+        ).start()
+
+    def _flush_cloud_outbox(self) -> None:
+        for item in self._outbox.due():
+            self._start_cloud_outbox_item(item["id"])
 
     # ---------- 云轮询 ----------
 
@@ -318,6 +367,7 @@ class SyncHub(QObject):
             if server_ts:
                 self._cloud_last_ts = server_ts
                 self._save_cursor()
+            self._flush_cloud_outbox()
         except Exception:
             log_exception("云轮询异常")
         finally:
