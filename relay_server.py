@@ -223,6 +223,18 @@ def _init_db() -> None:
             )
         """)
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS presence (
+                channel_id  TEXT NOT NULL,
+                pk_fp       TEXT NOT NULL,
+                meta        TEXT NOT NULL,
+                content_b64 TEXT NOT NULL,
+                attach_b64  TEXT NOT NULL,
+                attach_ext  TEXT NOT NULL,
+                seen_at     TEXT NOT NULL,
+                PRIMARY KEY (channel_id, pk_fp)
+            )
+        """)
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS pairing_sessions (
                 token      TEXT PRIMARY KEY NOT NULL,
                 created_at REAL NOT NULL,
@@ -678,20 +690,40 @@ def api_send() -> tuple:
         bucket_key = pair_code
 
     with _LOCK, _db_session() as conn:
-        conn.execute(
-            "INSERT OR IGNORE INTO letters "
-            "(pair_code, message_id, meta, content_b64, attach_b64, attach_ext, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (
-                bucket_key,
-                message_id,
-                meta_str,
-                content_b64,
-                attach_b64,
-                attach_ext,
-                _now_iso(),
-            ),
-        )
+        if channel_id and meta.get("type") == "ping" and meta.get("kind") == "heartbeat":
+            conn.execute(
+                "INSERT INTO presence "
+                "(channel_id, pk_fp, meta, content_b64, attach_b64, attach_ext, seen_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(channel_id, pk_fp) DO UPDATE SET "
+                "meta=excluded.meta, content_b64=excluded.content_b64, "
+                "attach_b64=excluded.attach_b64, attach_ext=excluded.attach_ext, "
+                "seen_at=excluded.seen_at",
+                (
+                    channel_id,
+                    meta["pk_fp"],
+                    meta_str,
+                    content_b64,
+                    attach_b64,
+                    attach_ext,
+                    _now_iso(),
+                ),
+            )
+        else:
+            conn.execute(
+                "INSERT OR IGNORE INTO letters "
+                "(pair_code, message_id, meta, content_b64, attach_b64, attach_ext, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    bucket_key,
+                    message_id,
+                    meta_str,
+                    content_b64,
+                    attach_b64,
+                    attach_ext,
+                    _now_iso(),
+                ),
+            )
         conn.commit()
     return jsonify({"ok": True}), 200
 
@@ -792,6 +824,35 @@ def api_poll() -> tuple:
         server_cursor = r["id"]
         if r["created_at"] > server_ts:
             server_ts = r["created_at"]
+    if channel_id and not has_more:
+        members = _channel_members(channel_id)
+        partner_fp = None
+        if members:
+            for member_pk in members:
+                member_fp = _pk_fp(_b64d(member_pk))
+                if member_fp != pk_fp:
+                    partner_fp = member_fp
+                    break
+        if partner_fp:
+            with _db_session() as conn:
+                presence = conn.execute(
+                    "SELECT meta, content_b64, attach_b64, attach_ext, seen_at "
+                    "FROM presence WHERE channel_id = ? AND pk_fp = ?",
+                    (channel_id, partner_fp),
+                ).fetchone()
+            try:
+                seen_at = datetime.fromisoformat(presence["seen_at"])
+                cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=90)
+                is_recent = seen_at >= cutoff
+            except (TypeError, ValueError):
+                is_recent = False
+            if presence and is_recent:
+                letters.append({
+                    "meta": _loads(presence["meta"]),
+                    "content_base64": presence["content_b64"],
+                    "attachment_base64": presence["attach_b64"],
+                    "attachment_ext": presence["attach_ext"],
+                })
     result = {
         "server_ts": server_ts,
         "server_cursor": str(server_cursor),

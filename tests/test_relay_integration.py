@@ -54,6 +54,9 @@ class RelayHttpIntegrationTests(unittest.TestCase):
                     return_value=(first_key.public_key().public_bytes_raw(), first_key),
                 ):
                     self.assertTrue(sender.send_letter({}, "channel hello", b"", ""))
+                    self.assertTrue(sender.send_letter(
+                        {"type": "ping", "kind": "heartbeat"}, "", b"", ""
+                    ))
                 with patch(
                     "DesktopMailbox.cloud_sync.idm.get_status",
                     return_value=receiver_status,
@@ -62,8 +65,16 @@ class RelayHttpIntegrationTests(unittest.TestCase):
                     return_value=(second_key.public_key().public_bytes_raw(), second_key),
                 ):
                     letters, cursor = receiver.poll_letters()
-                self.assertEqual([item["content"] for item in letters], ["channel hello"])
+                self.assertEqual(
+                    [item["content"] for item in letters], ["channel hello", ""]
+                )
+                self.assertEqual(letters[1]["meta"]["kind"], "heartbeat")
                 self.assertTrue(cursor.isdigit())
+                with relay_server._db_session() as conn:
+                    self.assertEqual(
+                        conn.execute("SELECT COUNT(*) FROM letters").fetchone()[0],
+                        1,
+                    )
             finally:
                 server.shutdown()
                 thread.join(timeout=5)
