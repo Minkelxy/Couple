@@ -17,7 +17,7 @@
      - 每 2s 轮询：拿到 host_pk_b64 → 进入 SAFETY 阶段显示安全码，确认后
        调 confirm，服务端写 channel_id 绑定，两边完成。
 
-服务端配对存储（内存，重启清空，超过 10 分钟 TTL 自动删）：
+服务端配对存储（SQLite，支持多个 Gunicorn worker，超过 10 分钟 TTL 自动删）：
   pairing_state: {
     TOKEN: {
       host: {pk_b64, nickname, nonce, confirmed_ts?}

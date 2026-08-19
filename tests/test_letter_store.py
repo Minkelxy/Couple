@@ -9,6 +9,41 @@ from common_utils import AtomicJsonStore
 
 
 class LetterStorePersistenceTests(unittest.TestCase):
+    def test_message_id_makes_repeated_delivery_idempotent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_dir = letter_store._LETTERS_DIR
+            original_store = letter_store._META_STORE
+            letter_store._LETTERS_DIR = Path(tmp) / "letters"
+            letter_store._META_STORE = AtomicJsonStore(Path(tmp) / "mailbox.json", [])
+            try:
+                with patch.object(
+                    letter_store.crypto,
+                    "encrypt",
+                    side_effect=lambda data: b"enc:" + data,
+                ):
+                    first = letter_store.write_letter(
+                        author="A",
+                        recipient="B",
+                        title="Title",
+                        content="Content",
+                        deliver_at=datetime.now(),
+                        message_id="message-1",
+                    )
+                    second = letter_store.write_letter(
+                        author="A",
+                        recipient="B",
+                        title="Title",
+                        content="Content",
+                        deliver_at=datetime.now(),
+                        message_id="message-1",
+                    )
+
+                self.assertEqual(second["id"], first["id"])
+                self.assertEqual(len(letter_store._load_meta()), 1)
+            finally:
+                letter_store._LETTERS_DIR = original_dir
+                letter_store._META_STORE = original_store
+
     def test_write_letter_atomically_persists_metadata_and_encrypted_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             original_dir = letter_store._LETTERS_DIR
