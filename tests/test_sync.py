@@ -58,6 +58,22 @@ class SyncTransportTests(unittest.TestCase):
         hub._save_cursor.assert_not_called()
         hub._cloud_schedule_poll.assert_called_once()
 
+    def test_paired_channel_starts_cloud_without_legacy_pair_code(self):
+        from DesktopMailbox import sync as sync_module
+
+        paired = SimpleNamespace(paired=True, channel_id="channel-1")
+        with patch.object(sync_module.idm, "get_status", return_value=paired), \
+                patch.object(sync_module, "CloudSyncClient") as cloud_client:
+            hub = SyncHub({
+                "sync_mode": "cloud",
+                "cloud_server": "https://relay.example",
+                "cloud_pair_code": "",
+            })
+
+        cloud_client.assert_called_once_with(
+            "https://relay.example", "", sig_dedup_fn=hub._check_and_record_sig
+        )
+
     def test_recv_exact_returns_none_for_truncated_payload(self):
         reader, writer = socket.socketpair()
         try:

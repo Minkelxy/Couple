@@ -119,7 +119,8 @@ class SyncHub(QObject):
         if mode in ("cloud", "both"):
             server = cfg.get("cloud_server", "").strip()
             pair_code = cfg.get("cloud_pair_code", "").strip()
-            if server and pair_code:
+            # New channel pairing does not need the legacy pair code.
+            if server and (pair_code or idm.get_status().paired):
                 # 把 _check_and_record_sig 注入 CloudSyncClient，让云轮询与局域网共享同一 LRU
                 self._cloud_client = CloudSyncClient(
                     server, pair_code, sig_dedup_fn=self._check_and_record_sig
