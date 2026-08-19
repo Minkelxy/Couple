@@ -12,6 +12,7 @@ EnvironmentFile=/etc/couple-relay.env
 ExecStart=/opt/couple-relay/.venv/bin/gunicorn --workers 2 --bind 127.0.0.1:5000 --access-logfile - --error-logfile - relay_server:app
 Restart=on-failure
 RestartSec=5
+UMask=0077
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true

@@ -6,6 +6,7 @@ After=couple-relay.service
 Type=oneshot
 User=couple-relay
 Group=couple-relay
+UMask=0077
 WorkingDirectory=/opt/couple-relay
 EnvironmentFile=/etc/couple-relay.env
 ExecStart=/opt/couple-relay/.venv/bin/python /opt/couple-relay/relay_backup.py
