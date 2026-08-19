@@ -595,7 +595,9 @@ def _resolve_and_verify_channel(
 def health() -> tuple:
     try:
         with _db_session() as conn:
-            conn.execute("SELECT 1").fetchone()
+            result = conn.execute("PRAGMA quick_check(1)").fetchone()
+            if not result or result[0] != "ok":
+                return jsonify({"ok": False, "db": "corrupt"}), 503
     except (OSError, sqlite3.Error):
         return jsonify({"ok": False, "db": "unavailable"}), 503
     return jsonify({"ok": True, "db": "ok", "time": _now_iso()}), 200

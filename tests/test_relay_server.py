@@ -5,7 +5,7 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
@@ -47,6 +47,14 @@ class RelayPollingTests(unittest.TestCase):
             unhealthy = client.get("/health")
         self.assertEqual(unhealthy.status_code, 503)
         self.assertFalse(unhealthy.get_json()["ok"])
+
+        fake_conn = Mock()
+        fake_conn.execute.return_value.fetchone.return_value = ("database disk image is malformed",)
+        with patch.object(relay_server, "_db_session") as db_session:
+            db_session.return_value.__enter__.return_value = fake_conn
+            corrupt = client.get("/health")
+        self.assertEqual(corrupt.status_code, 503)
+        self.assertEqual(corrupt.get_json()["db"], "corrupt")
 
     def test_pairing_endpoints_reject_non_object_json(self):
         client = relay_server.app.test_client()
