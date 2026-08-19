@@ -26,7 +26,7 @@
 
 运行：
   开发：python relay_server.py
-  生产：gunicorn -w 2 -b 0.0.0.0:5000 relay_server:app
+  生产：gunicorn -w 2 -b 127.0.0.1:5000 relay_server:app
         （不建议超过 2 worker，SQLite 多 worker 并发仍受限，WAL 可减轻）
 
 安全建议：
@@ -866,5 +866,5 @@ if __name__ == "__main__":
     print("健康检查: http://127.0.0.1:5000/health")
     print("公钥身份通道说明：先 /api/pairing/declare→poll→confirm 配对，"
           "然后 /api/send 和 /api/poll 走 channel_id 模式")
-    print("生产部署请用: gunicorn --workers 2 --bind 0.0.0.0:5000 relay_server:app")
+    print("生产部署请用: gunicorn --workers 2 --bind 127.0.0.1:5000 relay_server:app")
     app.run(host="0.0.0.0", port=5000, debug=False)

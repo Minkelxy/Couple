@@ -1,0 +1,22 @@
+[Unit]
+Description=CoupleSuite relay server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=couple-relay
+Group=couple-relay
+WorkingDirectory=/opt/couple-relay
+EnvironmentFile=/etc/couple-relay.env
+ExecStart=/opt/couple-relay/.venv/bin/gunicorn --workers 2 --bind 127.0.0.1:5000 --access-logfile - --error-logfile - relay_server:app
+Restart=on-failure
+RestartSec=5
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/couple-relay
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

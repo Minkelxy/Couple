@@ -1,5 +1,6 @@
 import base64
 from concurrent.futures import ThreadPoolExecutor
+import hashlib
 import sqlite3
 import tempfile
 import unittest
@@ -115,6 +116,69 @@ class RelayPollingTests(unittest.TestCase):
                 relay_server._DB_PATH = original_db_path
                 relay_server._PAIRING.clear()
                 relay_server._PAIRING.update(original_pairing)
+
+    def test_pairing_declare_confirm_builds_channel(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_db_path = relay_server._DB_PATH
+            original_legacy = relay_server.app.config["ALLOW_LEGACY_PAIR_CODE"]
+            relay_server._DB_PATH = Path(tmp) / "letters.db"
+            relay_server.app.config["ALLOW_LEGACY_PAIR_CODE"] = False
+            try:
+                relay_server._init_db()
+                client = relay_server.app.test_client()
+                token = "ABC234"
+                host_key = Ed25519PrivateKey.generate()
+                guest_key = Ed25519PrivateKey.generate()
+                host_pk = relay_server._b64e(host_key.public_key().public_bytes_raw())
+                guest_pk = relay_server._b64e(guest_key.public_key().public_bytes_raw())
+
+                host_declared = client.post(
+                    "/api/pairing/declare",
+                    json={"token": token, "role": "host", "pk_b64": host_pk, "nickname": "A"},
+                ).get_json()
+                guest_declared = client.post(
+                    "/api/pairing/declare",
+                    json={"token": token, "role": "guest", "pk_b64": guest_pk, "nickname": "B"},
+                ).get_json()
+                self.assertTrue(host_declared["ok"])
+                self.assertTrue(guest_declared["ok"])
+
+                for role, key, nonce, partner_pk in (
+                    ("host", host_key, host_declared["nonce"], guest_pk),
+                    ("guest", guest_key, guest_declared["nonce"], host_pk),
+                ):
+                    signature = key.sign(
+                        f"{role}|{token}|{nonce}|{partner_pk}".encode()
+                    )
+                    response = client.post(
+                        "/api/pairing/confirm",
+                        json={
+                            "token": token,
+                            "role": role,
+                            "my_nonce": nonce,
+                            "sig_b64": relay_server._b64e(signature),
+                            "safety_confirmed": True,
+                        },
+                    )
+                    self.assertEqual(response.status_code, 200)
+
+                completed = client.get(
+                    "/api/pairing/poll",
+                    query_string={"token": token, "role": "host", "step": "both_confirmed"},
+                )
+                payload = completed.get_json()
+                self.assertEqual(completed.status_code, 200)
+                self.assertTrue(payload["both_confirmed"])
+                self.assertEqual(
+                    payload["channel_id"],
+                    hashlib.sha256(
+                        min(host_key.public_key().public_bytes_raw(), guest_key.public_key().public_bytes_raw())
+                        + max(host_key.public_key().public_bytes_raw(), guest_key.public_key().public_bytes_raw())
+                    ).hexdigest()[:24],
+                )
+            finally:
+                relay_server._DB_PATH = original_db_path
+                relay_server.app.config["ALLOW_LEGACY_PAIR_CODE"] = original_legacy
 
     def test_pairing_role_claim_is_atomic_across_threads(self):
         with tempfile.TemporaryDirectory() as tmp:
