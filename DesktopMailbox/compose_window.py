@@ -1,6 +1,8 @@
 """写信窗口：标题 / 正文 / 图片附件 / 送达时间。"""
 from __future__ import annotations
 
+import uuid
+
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -224,6 +226,7 @@ class ComposeWindow(QMainWindow):
         if deliver_at is None:
             return
 
+        message_id = uuid.uuid4().hex
         letter_store.write_letter(
             author=author,
             recipient=recipient,
@@ -232,6 +235,7 @@ class ComposeWindow(QMainWindow):
             deliver_at=deliver_at,
             attachment_bytes=self._attachment_bytes,
             attachment_ext=self._attachment_ext,
+            message_id=message_id,
         )
         # 同步给对方（异步，不阻塞 UI）
         if self._sync is not None:
@@ -241,6 +245,7 @@ class ComposeWindow(QMainWindow):
                 "recipient": recipient,
                 "title": title or "(无标题)",
                 "deliver_at": deliver_at.isoformat(timespec="minutes"),
+                "message_id": message_id,
             }
             self._sync.send_async(
                 sync_meta, content, self._attachment_bytes, self._attachment_ext

@@ -69,6 +69,7 @@ _CLEANUP_INTERVAL_SEC = 6 * 3600
 _MAX_ATTACH_B64_LEN = 50 * 1024 * 1024 * 2  # 允许原始 50MB，base64 放宽 2 倍
 _MAX_CONTENT_B64_LEN = 2 * 1024 * 1024  # 正文文本 2MB 足够
 _MAX_META_B64_LEN = 64 * 1024  # meta 元数据 JSON 序列化后上限 64KB
+_MAX_MESSAGE_ID_LEN = 128
 _MAX_PAIR_LEN = 128
 _MIN_PAIR_LEN = 3
 _MAX_ATTACH_EXT_LEN = 32
@@ -193,6 +194,7 @@ def _init_db() -> None:
             CREATE TABLE IF NOT EXISTS letters (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 pair_code   TEXT    NOT NULL,
+                message_id  TEXT,
                 meta        TEXT    NOT NULL,
                 content_b64 TEXT    NOT NULL,
                 attach_b64  TEXT    NOT NULL,
@@ -200,6 +202,15 @@ def _init_db() -> None:
                 created_at  TEXT    NOT NULL
             )
         """)
+        try:
+            conn.execute("ALTER TABLE letters ADD COLUMN message_id TEXT")
+        except sqlite3.OperationalError:
+            pass
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_pair_message "
+            "ON letters(pair_code, message_id) "
+            "WHERE message_id IS NOT NULL AND message_id <> ''"
+        )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_pair_created ON letters(pair_code, created_at)"
         )
@@ -620,6 +631,11 @@ def api_send() -> tuple:
     meta = data.get("meta")
     if not isinstance(meta, dict):
         return jsonify({"ok": False, "error": "meta 必须是对象"}), 400
+    message_id = meta.get("message_id")
+    if message_id is not None and (
+        not isinstance(message_id, str) or not message_id or len(message_id) > _MAX_MESSAGE_ID_LEN
+    ):
+        return jsonify({"ok": False, "error": "message_id 类型或长度非法"}), 400
     content_b64 = data.get("content_base64") or ""
     attach_b64 = data.get("attachment_base64") or ""
     attach_ext = data.get("attachment_ext") or ""
@@ -661,9 +677,18 @@ def api_send() -> tuple:
 
     with _LOCK, _db_session() as conn:
         conn.execute(
-            "INSERT INTO letters(pair_code, meta, content_b64, attach_b64, attach_ext, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (bucket_key, meta_str, content_b64, attach_b64, attach_ext, _now_iso()),
+            "INSERT OR IGNORE INTO letters "
+            "(pair_code, message_id, meta, content_b64, attach_b64, attach_ext, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                bucket_key,
+                message_id,
+                meta_str,
+                content_b64,
+                attach_b64,
+                attach_ext,
+                _now_iso(),
+            ),
         )
         conn.commit()
     return jsonify({"ok": True}), 200

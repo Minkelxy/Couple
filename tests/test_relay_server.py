@@ -189,6 +189,28 @@ class RelayPollingTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
 
+    def test_retried_message_id_is_stored_only_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_db_path = relay_server._DB_PATH
+            relay_server._DB_PATH = Path(tmp) / "letters.db"
+            try:
+                relay_server._init_db()
+                client = relay_server.app.test_client()
+                payload = {
+                    "pair_code": "retry-test",
+                    "meta": {"type": "letter", "message_id": "message-1"},
+                    "content_base64": "aGVsbG8=",
+                    "attachment_base64": "",
+                    "attachment_ext": "",
+                }
+                self.assertEqual(client.post("/api/send", json=payload).status_code, 200)
+                self.assertEqual(client.post("/api/send", json=payload).status_code, 200)
+                polled = client.get("/api/poll?pair_code=retry-test")
+                self.assertEqual(polled.status_code, 200)
+                self.assertEqual(len(polled.get_json()["letters"]), 1)
+            finally:
+                relay_server._DB_PATH = original_db_path
+
     def test_messages_created_after_empty_poll_are_not_skipped(self):
         with tempfile.TemporaryDirectory() as tmp:
             original_db_path = relay_server._DB_PATH
