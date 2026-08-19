@@ -1,5 +1,6 @@
 import base64
 from concurrent.futures import ThreadPoolExecutor
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -29,6 +30,22 @@ class RelayPollingTests(unittest.TestCase):
             self.assertEqual(response.status_code, 410)
         finally:
             relay_server.app.config["ALLOW_LEGACY_PAIR_CODE"] = True
+
+    def test_health_reports_database_readiness(self):
+        client = relay_server.app.test_client()
+
+        healthy = client.get("/health")
+        self.assertEqual(healthy.status_code, 200)
+        self.assertEqual(healthy.get_json()["db"], "ok")
+
+        with patch.object(
+            relay_server,
+            "_get_db",
+            side_effect=sqlite3.OperationalError("database unavailable"),
+        ):
+            unhealthy = client.get("/health")
+        self.assertEqual(unhealthy.status_code, 503)
+        self.assertFalse(unhealthy.get_json()["ok"])
 
     def test_pairing_endpoints_reject_non_object_json(self):
         client = relay_server.app.test_client()

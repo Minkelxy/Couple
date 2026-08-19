@@ -19,7 +19,7 @@
 
 存储：
   - SQLite（letters.db，自动建表，WAL 模式支持多 worker）
-  - 配对态：内存 dict（重启清空，TTL 10 分钟自动清）
+  - 配对态：SQLite pairing_sessions/pairing_members（TTL 10 分钟自动清）
   - 通道成员：SQLite channels 表（永久保留，已配对的双方永远能认出彼此）
 
 清理：后台线程每 6 小时清理 30 天以上的信件（分批）。
@@ -47,7 +47,7 @@ import sqlite3
 import threading
 import time
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from cryptography.exceptions import InvalidSignature
@@ -582,7 +582,12 @@ def _resolve_and_verify_channel(
 
 @app.route("/health")
 def health() -> tuple:
-    return jsonify({"ok": True, "time": _now_iso()}), 200
+    try:
+        with _db_session() as conn:
+            conn.execute("SELECT 1").fetchone()
+    except (OSError, sqlite3.Error):
+        return jsonify({"ok": False, "db": "unavailable"}), 503
+    return jsonify({"ok": True, "db": "ok", "time": _now_iso()}), 200
 
 
 @app.route("/")
@@ -808,7 +813,10 @@ def _cleanup_loop() -> None:
 
 def _now_iso() -> str:
     # 微秒精度:增量拉取用 created_at > since,秒级精度会漏掉同一秒内的信件
-    return datetime.utcnow().isoformat(timespec="microseconds")
+    # 保持现有无时区字符串格式，避免旧客户端解析行为变化。
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat(
+        timespec="microseconds"
+    )
 
 
 def _dumps(obj) -> str:
