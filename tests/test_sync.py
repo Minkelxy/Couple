@@ -758,6 +758,11 @@ class SyncTransportTests(unittest.TestCase):
             reader.close()
             writer.close()
 
+    def test_recv_exact_accumulates_fragmented_reads(self):
+        reader = SimpleNamespace(recv=Mock(side_effect=[b"a", b"bc"]))
+
+        self.assertEqual(_recv_exact(reader, 3), b"abc")
+
 
 if __name__ == "__main__":
     unittest.main()

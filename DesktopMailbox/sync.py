@@ -140,13 +140,13 @@ def _ensure_uuid(cfg_dir: Path) -> str:
 
 
 def _recv_exact(sock: socket.socket, n: int) -> bytes | None:
-    buf = b""
+    buf = bytearray()
     while len(buf) < n:
         chunk = sock.recv(min(n - len(buf), 65536))
         if not chunk:
             return None
-        buf += chunk
-    return buf
+        buf.extend(chunk)
+    return bytes(buf)
 
 
 class SyncHub(QObject):
