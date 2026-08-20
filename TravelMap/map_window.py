@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import time
+import math
 from datetime import date
 from pathlib import Path
 
@@ -71,6 +72,9 @@ def handle_partner_event(meta: dict, content: str, attachment: bytes,
     except (TypeError, ValueError):
         log_warning("收到对方 map 事件的非法 lat/lng: %r, %r",
                     meta.get("lat"), meta.get("lng"))
+        return
+    if not (math.isfinite(lat) and math.isfinite(lng)) or not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        log_warning("收到对方 map 事件的坐标超出范围: %r, %r", lat, lng)
         return
     note = meta.get("note", "")
     if not isinstance(note, str):

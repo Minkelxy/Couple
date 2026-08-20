@@ -87,9 +87,19 @@ def handle_partner_event(meta: dict, content: str, attachment: bytes,
         log_warning("收到对方 checkin 事件的非法日期: %r", date_str)
         return
     try:
+        if date.fromisoformat(date_str).isoformat() != date_str:
+            raise ValueError
+    except ValueError:
+        log_warning("收到对方 checkin 事件的非法日期: %r", date_str)
+        return
+    try:
         mood = int(meta.get("mood", 0))
     except (TypeError, ValueError):
-        mood = 0
+        log_warning("收到对方 checkin 事件的非法心情: %r", meta.get("mood"))
+        return
+    if mood not in store.MOOD_MAP:
+        log_warning("收到对方 checkin 事件的心情超出范围: %r", mood)
+        return
     note = meta.get("note", "") or ""
     if not isinstance(note, str):
         note = str(note)
