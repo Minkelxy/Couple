@@ -3,7 +3,7 @@ import unittest
 
 from PySide6.QtCore import QCoreApplication, QThread, Qt, Signal
 
-from launcher import _MainThreadSyncBridge
+from DesktopMailbox.sync import SyncSignalBridge
 
 
 class _Worker(QThread):
@@ -21,7 +21,7 @@ class LauncherSyncBridgeTests(unittest.TestCase):
     def test_worker_signal_is_delivered_on_main_thread(self):
         main_thread = QThread.currentThread()
         received = []
-        bridge = _MainThreadSyncBridge(
+        bridge = SyncSignalBridge(
             lambda *_: None,
             lambda *_: None,
             lambda *args: received.append(QThread.currentThread()),

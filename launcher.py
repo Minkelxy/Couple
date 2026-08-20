@@ -12,7 +12,7 @@ import sys
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Qt, QTimer, Slot
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication, QMessageBox
 
@@ -31,7 +31,7 @@ from DesktopMailbox.compose_window import ComposeWindow
 from DesktopMailbox.inbox_window import InboxWindow
 from DesktopMailbox.notifier import DueChecker
 from DesktopMailbox.read_letter_window import ReadLetterWindow
-from DesktopMailbox.sync import SyncHub
+from DesktopMailbox.sync import SyncHub, SyncSignalBridge
 
 from DailyCheckin.checkin_window import CheckinWindow, handle_partner_event
 from MovieBoard.board_window import (
@@ -58,37 +58,6 @@ from stats_window import StatsWindow
 from onboarding import OnboardingWindow
 import backup
 from PySide6.QtCore import QEventLoop
-
-
-class _MainThreadSyncBridge(QObject):
-    """Marshal SyncHub callbacks from worker threads into the GUI thread."""
-
-    def __init__(self, on_send_result, on_letter_received, on_event_received) -> None:
-        super().__init__()
-        self._on_send_result = on_send_result
-        self._on_letter_received = on_letter_received
-        self._on_event_received = on_event_received
-
-    @Slot(bool, str)
-    def send_result(self, ok: bool, message: str) -> None:
-        self._on_send_result(ok, message)
-
-    @Slot(str)
-    def letter_received(self, letter_id: str) -> None:
-        self._on_letter_received(letter_id)
-
-    @Slot(str, dict, str, bytes, str)
-    def event_received(
-        self,
-        event_type: str,
-        meta: dict,
-        content: str,
-        attachment: bytes,
-        attachment_ext: str,
-    ) -> None:
-        self._on_event_received(
-            event_type, meta, content, attachment, attachment_ext
-        )
 
 
 def main() -> int:
@@ -263,7 +232,7 @@ def main() -> int:
     def on_send_result(_ok: bool, message: str) -> None:
         tray.show_toast("同步", message)
 
-    sync_bridge = _MainThreadSyncBridge(
+    sync_bridge = SyncSignalBridge(
         on_send_result, on_sync_received, on_event_received
     )
 

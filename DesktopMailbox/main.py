@@ -21,7 +21,7 @@ from compose_window import ComposeWindow
 from inbox_window import InboxWindow
 from notifier import DueChecker
 from read_letter_window import ReadLetterWindow
-from sync import SyncHub
+from sync import SyncHub, SyncSignalBridge
 from tray import TrayController
 
 
@@ -129,13 +129,20 @@ def main() -> int:
         if any(it["id"] == letter_id for it in letter_store.list_due_unread()):
             on_letters_due([letter_id])
 
+    sync_bridge = SyncSignalBridge(
+        lambda _ok, message: tray.show_toast("同步", message),
+        on_sync_received,
+        lambda *_: None,
+    )
+    connection_type = Qt.ConnectionType.QueuedConnection
+
     # 连信号
     tray.compose_requested.connect(open_compose)
     tray.inbox_requested.connect(open_inbox)
     tray.quit_requested.connect(app.quit)
     checker.letters_due.connect(on_letters_due)
-    hub.send_result.connect(lambda ok, msg: tray.show_toast("同步", msg))
-    hub.letter_received.connect(on_sync_received)
+    hub.send_result.connect(sync_bridge.send_result, connection_type)
+    hub.letter_received.connect(sync_bridge.letter_received, connection_type)
 
     # 退出时关闭同步服务
     app.aboutToQuit.connect(hub.stop)

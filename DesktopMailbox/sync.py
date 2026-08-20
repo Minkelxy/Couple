@@ -29,7 +29,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, Slot
 
 import app_paths
 import identity as idm
@@ -54,6 +54,37 @@ _MAX_CONTENT_BYTES = 1 * 1024 * 1024
 _MAX_ATTACHMENT_EXT_BYTES = 32
 _MAX_EVENT_TYPE_BYTES = 64
 _MAX_ATTACHMENT_B64_LEN = 4 * ((MAX_ATTACHMENT_BYTES + 2) // 3)
+
+
+class SyncSignalBridge(QObject):
+    """Marshal SyncHub callbacks from worker threads into the GUI thread."""
+
+    def __init__(self, on_send_result, on_letter_received, on_event_received) -> None:
+        super().__init__()
+        self._on_send_result = on_send_result
+        self._on_letter_received = on_letter_received
+        self._on_event_received = on_event_received
+
+    @Slot(bool, str)
+    def send_result(self, ok: bool, message: str) -> None:
+        self._on_send_result(ok, message)
+
+    @Slot(str)
+    def letter_received(self, letter_id: str) -> None:
+        self._on_letter_received(letter_id)
+
+    @Slot(str, dict, str, bytes, str)
+    def event_received(
+        self,
+        event_type: str,
+        meta: dict,
+        content: str,
+        attachment: bytes,
+        attachment_ext: str,
+    ) -> None:
+        self._on_event_received(
+            event_type, meta, content, attachment, attachment_ext
+        )
 
 
 def _cursor_namespace(cfg: dict, mode: str) -> str:
