@@ -38,6 +38,7 @@ class ReadLetterWindow(QMainWindow):
 
         self.setWindowTitle("一封信 ✉" if meta is None else f"一封信 ✉ · {meta['title']}")
         self.resize(640, 720)
+        self.setMinimumSize(560, 620)
 
         # 滚动容器，长信/大图也能看
         scroll = QScrollArea(self)
@@ -53,15 +54,15 @@ class ReadLetterWindow(QMainWindow):
         # meta 不存在：最小 UI 提示，避免残破窗口后访问 self._meta 抛 AttributeError
         if meta is None:
             tip = QLabel("这封信不存在（可能已删除）。", self)
-            tip.setStyleSheet("font-size:16px; color:#888; padding:40px 0;")
+            tip.setStyleSheet("font-size:16px; color:#7b8794; padding:40px 0;")
             tip.setAlignment(Qt.AlignCenter)
             layout.addWidget(tip)
             layout.addStretch(1)
             close_btn = QPushButton("关闭", self)
             close_btn.setStyleSheet(
-                "QPushButton{background:#e65a7a;color:#fff;border:none;"
-                "border-radius:8px;padding:10px;font-size:14px;}"
-                "QPushButton:hover{background:#d94a6a;}"
+                "QPushButton{background:#263238;color:#fff;border:none;"
+                "border-radius:6px;padding:10px;font-size:14px;}"
+                "QPushButton:hover{background:#37474f;}"
             )
             close_btn.clicked.connect(self.close)
             layout.addWidget(close_btn)
@@ -69,7 +70,7 @@ class ReadLetterWindow(QMainWindow):
 
         # 信头
         title_lbl = QLabel(meta["title"], self)
-        title_lbl.setStyleSheet("font-size:22px; font-weight:600; color:#222;")
+        title_lbl.setStyleSheet("font-size:24px; font-weight:700; color:#263238;")
         title_lbl.setWordWrap(True)
         layout.addWidget(title_lbl)
 
@@ -78,12 +79,12 @@ class ReadLetterWindow(QMainWindow):
             f"{meta['author']}  →  {meta['recipient']}    写于 {created}",
             self,
         )
-        meta_lbl.setStyleSheet("color:#888; font-size:13px;")
+        meta_lbl.setStyleSheet("color:#7b8794; font-size:13px;")
         layout.addWidget(meta_lbl)
 
         # 分隔
         sep = QLabel("—" * 30, self)
-        sep.setStyleSheet("color:#ddd;")
+        sep.setStyleSheet("color:#dfe5ec;")
         layout.addWidget(sep)
 
         # 正文
@@ -91,7 +92,10 @@ class ReadLetterWindow(QMainWindow):
         body = QLabel(content, self)
         body.setWordWrap(True)
         body.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        body.setStyleSheet("font-size:15px; line-height:160%; color:#333;")
+        body.setStyleSheet(
+            "background:#ffffff;border:1px solid #edf1f5;border-radius:8px;"
+            "padding:16px;font-size:15px;line-height:160%;color:#263238;"
+        )
         layout.addWidget(body)
 
         # 附件
@@ -133,18 +137,18 @@ class ReadLetterWindow(QMainWindow):
         btn_row = QHBoxLayout()
         reply_btn = QPushButton("✍ 写回信", self)
         reply_btn.setStyleSheet(
-            "QPushButton{background:#fff;color:#e65a7a;border:1px solid #e65a7a;"
-            "border-radius:8px;padding:10px;font-size:14px;}"
-            "QPushButton:hover{background:#fde8ee;}"
+            "QPushButton{background:#ffffff;color:#d84f68;border:1px solid #e8a0ad;"
+            "border-radius:6px;padding:10px 16px;font-size:14px;}"
+            "QPushButton:hover{background:#fff0f3;}"
         )
         reply_btn.clicked.connect(self._on_reply)
         btn_row.addWidget(reply_btn)
 
         close_btn = QPushButton("收好这封信", self)
         close_btn.setStyleSheet(
-            "QPushButton{background:#e65a7a;color:#fff;border:none;"
-            "border-radius:8px;padding:10px;font-size:14px;}"
-            "QPushButton:hover{background:#d94a6a;}"
+            "QPushButton{background:#e85d75;color:#fff;border:none;"
+            "border-radius:6px;padding:10px 16px;font-size:14px;font-weight:600;}"
+            "QPushButton:hover{background:#d94f68;}"
         )
         close_btn.clicked.connect(self.close)
         btn_row.addWidget(close_btn)

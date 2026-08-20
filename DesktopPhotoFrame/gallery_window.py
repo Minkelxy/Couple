@@ -153,14 +153,16 @@ class GalleryWindow(QMainWindow):
         # 顶部悬浮工具栏
         self._toolbar = QFrame(central)
         self._toolbar.setStyleSheet(
-            "QFrame{background:rgba(0,0,0,140);border:none;}"
-            "QPushButton{background:rgba(255,255,255,30);color:#fff;border:none;"
-            "border-radius:6px;padding:8px 14px;font-size:13px;}"
-            "QPushButton:hover{background:rgba(255,255,255,60);}"
+            "QFrame{background:rgba(20,25,30,205);border:none;}"
+            "QPushButton{background:rgba(255,255,255,28);color:#fff;"
+            "border:1px solid rgba(255,255,255,55);border-radius:6px;"
+            "padding:8px 14px;font-size:13px;}"
+            "QPushButton:hover{background:rgba(232,93,117,210);"
+            "border-color:rgba(255,255,255,100);}"
         )
         tb_layout = QHBoxLayout(self._toolbar)
         tb_layout.setContentsMargins(16, 10, 16, 10)
-        btn_effect = QPushButton("Effect: Normal")
+        btn_effect = QPushButton("效果：普通")
         btn_prev = QPushButton("← 上一张")
         btn_play = QPushButton("▶ 自动播放")
         btn_next = QPushButton("下一张 →")
@@ -196,7 +198,7 @@ class GalleryWindow(QMainWindow):
         # 底部状态栏
         self._status = QLabel(central)
         self._status.setStyleSheet(
-            "QLabel{background:rgba(0,0,0,140);color:#fff;padding:8px 16px;"
+            "QLabel{background:rgba(20,25,30,190);color:#fff;padding:8px 16px;"
             "font-size:12px;border:none;}"
         )
         self._status.setParent(central)
@@ -282,7 +284,7 @@ class GalleryWindow(QMainWindow):
     def _cycle_effect(self) -> None:
         modes = ("normal", "warm", "mono")
         self._effect_mode = modes[(modes.index(self._effect_mode) + 1) % len(modes)]
-        labels = {"normal": "Effect: Normal", "warm": "Effect: Warm", "mono": "Effect: Mono"}
+        labels = {"normal": "效果：普通", "warm": "效果：暖色", "mono": "效果：黑白"}
         self._btn_effect.setText(labels[self._effect_mode])
         self._show_current()
 
