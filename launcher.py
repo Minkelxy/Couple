@@ -12,7 +12,7 @@ import sys
 import time
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QObject, Qt, QTimer, Slot
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication, QMessageBox
 
@@ -58,6 +58,37 @@ from stats_window import StatsWindow
 from onboarding import OnboardingWindow
 import backup
 from PySide6.QtCore import QEventLoop
+
+
+class _MainThreadSyncBridge(QObject):
+    """Marshal SyncHub callbacks from worker threads into the GUI thread."""
+
+    def __init__(self, on_send_result, on_letter_received, on_event_received) -> None:
+        super().__init__()
+        self._on_send_result = on_send_result
+        self._on_letter_received = on_letter_received
+        self._on_event_received = on_event_received
+
+    @Slot(bool, str)
+    def send_result(self, ok: bool, message: str) -> None:
+        self._on_send_result(ok, message)
+
+    @Slot(str)
+    def letter_received(self, letter_id: str) -> None:
+        self._on_letter_received(letter_id)
+
+    @Slot(str, dict, str, bytes, str)
+    def event_received(
+        self,
+        event_type: str,
+        meta: dict,
+        content: str,
+        attachment: bytes,
+        attachment_ext: str,
+    ) -> None:
+        self._on_event_received(
+            event_type, meta, content, attachment, attachment_ext
+        )
 
 
 def main() -> int:
@@ -229,6 +260,19 @@ def main() -> int:
         elif evt_type in ("gomoku_move", "gomoku_ctrl"):
             handle_gomoku_partner_event(meta, content, attachment, att_ext)
 
+    def on_send_result(_ok: bool, message: str) -> None:
+        tray.show_toast("同步", message)
+
+    sync_bridge = _MainThreadSyncBridge(
+        on_send_result, on_sync_received, on_event_received
+    )
+
+    def connect_sync_hub(hub: SyncHub) -> None:
+        connection_type = Qt.ConnectionType.QueuedConnection
+        hub.send_result.connect(sync_bridge.send_result, connection_type)
+        hub.letter_received.connect(sync_bridge.letter_received, connection_type)
+        hub.event_received.connect(sync_bridge.event_received, connection_type)
+
     def open_settings() -> None:
         nonlocal settings_win
         if settings_win is None:
@@ -254,11 +298,7 @@ def main() -> int:
         hub_holder["hub"].start()
         new_hub = hub_holder["hub"]
         set_gomoku_hub(new_hub)
-        hub_holder["hub"].send_result.connect(
-            lambda ok, msg: tray.show_toast("同步", msg)
-        )
-        hub_holder["hub"].letter_received.connect(on_sync_received)
-        hub_holder["hub"].event_received.connect(on_event_received)
+        connect_sync_hub(hub_holder["hub"])
         # 更新已创建窗口的 hub 引用：这些窗口仍持有旧（已停止）hub，否则同步发送会静默失败
         if compose_win is not None:
             try:
@@ -505,9 +545,7 @@ def main() -> int:
     # ===== 通知与退出 =====
     tray.quit_requested.connect(app.quit)
     checker.letters_due.connect(on_letters_due)
-    hub_holder["hub"].send_result.connect(lambda ok, msg: tray.show_toast("同步", msg))
-    hub_holder["hub"].letter_received.connect(on_sync_received)
-    hub_holder["hub"].event_received.connect(on_event_received)
+    connect_sync_hub(hub_holder["hub"])
     app.aboutToQuit.connect(lambda: hub_holder["hub"].stop())
     app.aboutToQuit.connect(lambda: log_info("========== 应用退出 =========="))
 
