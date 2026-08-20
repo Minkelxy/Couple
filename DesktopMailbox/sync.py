@@ -19,6 +19,7 @@ from __future__ import annotations
 import collections
 import base64
 import binascii
+import hashlib
 import json
 import socket
 import socketserver
@@ -51,6 +52,20 @@ _MAX_HEADER_BYTES = 64 * 1024
 _MAX_CONTENT_BYTES = 1 * 1024 * 1024
 _MAX_ATTACHMENT_EXT_BYTES = 32
 _MAX_EVENT_TYPE_BYTES = 64
+
+
+def _cursor_namespace(cfg: dict, mode: str) -> str:
+    server = cfg.get("cloud_server", "")
+    server = server.strip().rstrip("/") if isinstance(server, str) else ""
+    pair_code = cfg.get("cloud_pair_code", "")
+    pair_code = pair_code.strip() if isinstance(pair_code, str) else ""
+    scope = f"pair:{pair_code}" if pair_code else "unpaired"
+    if mode in ("cloud", "both") and server:
+        status = idm.get_status()
+        if status.paired and status.channel_id:
+            scope = f"channel:{status.channel_id}"
+    material = f"{server}\0{scope}".encode("utf-8")
+    return hashlib.sha256(material).hexdigest()
 
 
 def _ensure_uuid(cfg_dir: Path) -> str:
@@ -105,6 +120,8 @@ class SyncHub(QObject):
         self._my_id: str = _ensure_uuid(app_paths.CONFIG_DIR)
         self._cursor_path: Path = app_paths.DATA_DIR / "cloud_cursor.json"
         self._cursor_store = AtomicJsonStore(self._cursor_path, {})
+        mode = cfg.get("sync_mode", "lan")
+        self._cursor_key = _cursor_namespace(cfg, mode)
         self._cloud_last_ts: str = self._load_cursor()
         self._cursor_lock = threading.Lock()
         self._outbox = OutboxStore(app_paths.DATA_DIR / "cloud_outbox.json")
@@ -115,7 +132,6 @@ class SyncHub(QObject):
         self._seen_sigs: collections.OrderedDict[str, None] = collections.OrderedDict()
         self._sig_lock = threading.Lock()
         self._sig_lru_max = 1024
-        mode = cfg.get("sync_mode", "lan")
         self._cloud_client: CloudSyncClient | None = None
         if mode in ("cloud", "both"):
             server = cfg.get("cloud_server", "").strip()
@@ -164,23 +180,40 @@ class SyncHub(QObject):
         data = self._cursor_store.load()
         if not isinstance(data, dict):
             return ""
-        cursor = data.get("cursor")
+        record = data
+        cursors = data.get("cursors")
+        if isinstance(cursors, dict):
+            record = cursors.get(self._cursor_key, {})
+        cursor = record.get("cursor") if isinstance(record, dict) else None
         if isinstance(cursor, int) and cursor >= 0:
             return str(cursor)
         if isinstance(cursor, str) and cursor.isdigit():
             return cursor
-        ts = data.get("server_ts", "")
+        ts = record.get("server_ts", "") if isinstance(record, dict) else ""
         return ts if isinstance(ts, str) else ""
 
     def _save_cursor(self) -> None:
         """游标更新后落盘。多线程调用有锁。"""
         try:
             with self._cursor_lock:
-                self._cursor_store.update(
-                    server_ts=self._cloud_last_ts,
-                    cursor=(int(self._cloud_last_ts)
-                            if self._cloud_last_ts.isdigit() else None),
-                )
+                data = self._cursor_store.load()
+                if not isinstance(data, dict):
+                    data = {}
+                cursors = data.get("cursors")
+                if not isinstance(cursors, dict):
+                    cursors = {}
+                    # Migrate the pre-namespace top-level record once.
+                    if "cursor" in data or "server_ts" in data:
+                        cursors[self._cursor_key] = {
+                            "cursor": data.get("cursor"),
+                            "server_ts": data.get("server_ts", ""),
+                        }
+                cursors[self._cursor_key] = {
+                    "server_ts": self._cloud_last_ts,
+                    "cursor": (int(self._cloud_last_ts)
+                               if self._cloud_last_ts.isdigit() else None),
+                }
+                self._cursor_store.save({"version": 2, "cursors": cursors})
         except OSError:
             pass
 

@@ -137,11 +137,27 @@ class SyncTransportTests(unittest.TestCase):
                 _cursor_store=store,
                 _cursor_lock=threading.Lock(),
                 _cloud_last_ts="cursor",
+                _cursor_key="relay-key",
             )
 
             SyncHub._save_cursor(hub)
 
-            self.assertEqual(store.get("server_ts"), "cursor")
+            self.assertEqual(
+                store.get("cursors")["relay-key"]["server_ts"], "cursor"
+            )
+
+    def test_cloud_cursor_isolated_by_namespace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = AtomicJsonStore(Path(tmp) / "cursor.json", {
+                "version": 2,
+                "cursors": {
+                    "relay-a": {"cursor": 12, "server_ts": "12"},
+                    "relay-b": {"cursor": 34, "server_ts": "34"},
+                },
+            })
+            hub = SimpleNamespace(_cursor_store=store, _cursor_key="relay-b")
+
+            self.assertEqual(SyncHub._load_cursor(hub), "34")
 
     def test_cloud_cursor_does_not_advance_when_batch_processing_fails(self):
         hub = SimpleNamespace(
