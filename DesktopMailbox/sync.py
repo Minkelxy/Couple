@@ -656,7 +656,7 @@ class SyncHub(QObject):
         content: str,
         attachment: bytes,
         att_ext: str,
-    ) -> None:
+    ) -> bool:
         """被 handler 在 socket 线程调用：按 meta.type 路由。
 
         新版身份前置校验（优先级最高）：
@@ -672,7 +672,7 @@ class SyncHub(QObject):
         # 防御：meta 来自网络输入，非 dict 时直接丢弃，避免 .get() 抛 AttributeError
         if not isinstance(meta, dict):
             log_warning("收到非 dict 的 meta，已丢弃: %r", type(meta).__name__)
-            return
+            return False
 
         status = idm.get_status()
         if status.paired:
@@ -680,21 +680,17 @@ class SyncHub(QObject):
             my_pk_bytes, _ = idm.ensure_identity()
             my_fp = idm._pk_fp(my_pk_bytes)  # type: ignore[attr-defined]
             if meta.get("pk_fp") == my_fp:
-                return
+                return True
             # 2. 签名校验：必须是 partner 发的
             if not idm.verify_message(meta, content, attachment or b"", att_ext or ""):
-                log_warning(
-                    "收到局域网消息但身份验签失败（可能是非对方的人连上了端口），已丢弃。"
-                    "meta=%s",
-                    {k: v for k, v in meta.items() if k != "sig_b64"},
-                )
-                return
+                log_warning("收到局域网消息但身份验签失败，已丢弃")
+                return False
             log_info("局域网消息签名验证通过，type=%s", meta.get("type", "letter"))
         else:
             # 未配对：legacy 模式仍用 UUID sender_id 做自收信去重
             sender = meta.get("sender_id")
             if sender and sender == self._my_id:
-                return
+                return True
 
         # 签名 LRU 去重：仅当 meta 含 sig_b64 时才查 LRU。
         # 未配对模式无签名消息跳过 LRU（避免空 sig_b64 互相误杀），由 message_id 幂等兜底。
@@ -705,17 +701,17 @@ class SyncHub(QObject):
                     "收到重复签名消息，已丢弃（LRU 去重）: type=%s",
                     meta.get("type", "letter"),
                 )
-                return
+                return True
 
         msg_type = meta.get("type", "letter")
         if not isinstance(msg_type, str) or len(msg_type) > _MAX_EVENT_TYPE_BYTES:
             log_warning("收到非法同步事件类型，已丢弃: %r", msg_type)
-            return
+            return False
         if msg_type != "letter":
             message_id = meta.get("message_id", "")
             if not self._check_and_record_message_id(message_id, persist=False):
                 log_info("收到重复同步事件，已丢弃: message_id=%s", meta.get("message_id"))
-                return
+                return True
             try:
                 register_dispatch = getattr(self, "_register_event_dispatch", None)
                 dispatch_waiter = (
@@ -747,7 +743,7 @@ class SyncHub(QObject):
                 self._forget_sig(sig_b64)
                 raise OSError("同步事件主线程处理失败")
             self._commit_message_id(message_id)
-            return
+            return True
         try:
             deliver_at = datetime.fromisoformat(meta["deliver_at"])
         except (KeyError, TypeError, ValueError):
@@ -769,6 +765,7 @@ class SyncHub(QObject):
             if forget_sig is not None:
                 forget_sig(sig_b64)
             raise
+        return True
 
 
 def _make_handler(hub: SyncHub):

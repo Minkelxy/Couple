@@ -331,6 +331,29 @@ class SyncTransportTests(unittest.TestCase):
 
         hub.event_received.emit.assert_not_called()
 
+    def test_on_received_returns_rejected_for_invalid_signature(self):
+        hub = SimpleNamespace(_my_id="local-id")
+        with patch.object(
+            identity,
+            "get_status",
+            return_value=SimpleNamespace(paired=True),
+        ), patch.object(
+            identity,
+            "ensure_identity",
+            return_value=(b"local-public-key", object()),
+        ), patch.object(
+            identity,
+            "_pk_fp",
+            return_value="local-fingerprint",
+        ), patch.object(identity, "verify_message", return_value=False):
+            self.assertFalse(SyncHub.on_received(
+                hub,
+                {"type": "letter", "pk_fp": "partner-fingerprint"},
+                "hello",
+                b"",
+                "",
+            ))
+
     def test_on_received_recovers_from_non_string_delivery_time(self):
         hub = SimpleNamespace(
             _my_id="local-id",
