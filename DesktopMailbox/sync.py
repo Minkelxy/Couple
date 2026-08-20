@@ -165,6 +165,7 @@ class SyncHub(QObject):
         self._cloud_timer: threading.Timer | None = None
         self._heartbeat_timer: threading.Timer | None = None
         self._lifecycle_lock = threading.RLock()
+        self._timer_generation = 0
         self._started = False
         # stop() 后阻止轮询/心跳重新调度，避免退出后残留网络请求
         self._stopped = False
@@ -216,6 +217,7 @@ class SyncHub(QObject):
         with self._lifecycle_lock:
             if self._started:
                 return True
+            self._timer_generation = getattr(self, "_timer_generation", 0) + 1
             self._stopped = False
             started = False
             mode = self._cfg.get("sync_mode", "lan")
@@ -291,6 +293,7 @@ class SyncHub(QObject):
 
     def stop(self) -> None:
         with self._lifecycle_lock:
+            self._timer_generation = getattr(self, "_timer_generation", 0) + 1
             self._stopped = True
             self._started = False
             if self._heartbeat_timer is not None:
@@ -499,17 +502,39 @@ class SyncHub(QObject):
 
     # ---------- 云轮询 ----------
 
-    def _cloud_schedule_poll(self) -> None:
+    def _timer_is_current(self, generation: int) -> bool:
+        return (
+            not self._stopped
+            and generation == getattr(self, "_timer_generation", 0)
+        )
+
+    def _cloud_schedule_poll(self, generation: int | None = None) -> None:
+        generation = (
+            getattr(self, "_timer_generation", 0)
+            if generation is None
+            else generation
+        )
+        if not SyncHub._timer_is_current(self, generation):
+            return
         interval = int(self._cfg.get("cloud_poll_interval_sec", 30))
-        self._cloud_timer = threading.Timer(interval, self._cloud_poll_loop)
+        self._cloud_timer = threading.Timer(
+            interval, self._cloud_poll_loop, args=(generation,)
+        )
         self._cloud_timer.daemon = True
         self._cloud_timer.start()
 
-    def _cloud_poll_loop(self) -> None:
-        if self._stopped or self._cloud_client is None:
+    def _cloud_poll_loop(self, generation: int | None = None) -> None:
+        generation = (
+            getattr(self, "_timer_generation", 0)
+            if generation is None
+            else generation
+        )
+        if not SyncHub._timer_is_current(self, generation) or self._cloud_client is None:
             return
         try:
             letters, server_ts = self._cloud_client.poll_letters(self._cloud_last_ts)
+            if not SyncHub._timer_is_current(self, generation):
+                return
             if server_ts:
                 # 仅更新内存游标，延迟落盘：必须等所有信件处理完才保存，
                 # 否则中途崩溃会因游标已前进导致本批信件永久丢失。
@@ -539,23 +564,37 @@ class SyncHub(QObject):
             log_exception("云轮询异常")
         finally:
             # 即使处理某封信时出错，也要继续调度下一次，避免云同步永久停止
-            if not self._stopped:
-                self._cloud_schedule_poll()
+            if SyncHub._timer_is_current(self, generation):
+                self._cloud_schedule_poll(generation)
 
     # ---------- 心跳广播 ----------
 
-    def _heartbeat_schedule(self) -> None:
+    def _heartbeat_schedule(self, generation: int | None = None) -> None:
         """每 30 秒向对方广播一次 heartbeat ping，告知本机在线。"""
-        self._heartbeat_timer = threading.Timer(30, self._heartbeat_loop)
+        generation = (
+            getattr(self, "_timer_generation", 0)
+            if generation is None
+            else generation
+        )
+        if not SyncHub._timer_is_current(self, generation):
+            return
+        self._heartbeat_timer = threading.Timer(
+            30, self._heartbeat_loop, args=(generation,)
+        )
         self._heartbeat_timer.daemon = True
         self._heartbeat_timer.start()
 
-    def _heartbeat_loop(self) -> None:
-        if self._stopped:
+    def _heartbeat_loop(self, generation: int | None = None) -> None:
+        generation = (
+            getattr(self, "_timer_generation", 0)
+            if generation is None
+            else generation
+        )
+        if not SyncHub._timer_is_current(self, generation):
             return
         # 发送心跳事件（不带附件、无正文）；静默发送，失败不弹通知
         self.send_event("ping", {"kind": "heartbeat"}, silent=True)
-        self._heartbeat_schedule()
+        self._heartbeat_schedule(generation)
 
     # ---------- 收信 ----------
 

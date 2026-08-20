@@ -490,6 +490,43 @@ class SyncTransportTests(unittest.TestCase):
         hub._save_cursor.assert_not_called()
         hub._cloud_schedule_poll.assert_called_once()
 
+    def test_stale_cloud_timer_does_not_poll_or_reschedule(self):
+        hub = SimpleNamespace(
+            _stopped=False,
+            _timer_generation=2,
+            _cloud_client=SimpleNamespace(poll_letters=Mock()),
+            _cloud_last_ts="old-cursor",
+            _cloud_schedule_poll=Mock(),
+        )
+
+        SyncHub._cloud_poll_loop(hub, generation=1)
+
+        hub._cloud_client.poll_letters.assert_not_called()
+        hub._cloud_schedule_poll.assert_not_called()
+
+    def test_cloud_timer_discards_response_after_stop(self):
+        hub = SimpleNamespace(
+            _stopped=False,
+            _timer_generation=1,
+            _cloud_client=SimpleNamespace(),
+            _cloud_last_ts="old-cursor",
+            _save_cursor=Mock(),
+            _cloud_schedule_poll=Mock(),
+        )
+
+        def poll(_cursor):
+            hub._stopped = True
+            hub._timer_generation += 1
+            return [], "new-cursor"
+
+        hub._cloud_client.poll_letters = Mock(side_effect=poll)
+        with patch("DesktopMailbox.sync.log_exception"):
+            SyncHub._cloud_poll_loop(hub, generation=1)
+
+        self.assertEqual(hub._cloud_last_ts, "old-cursor")
+        hub._save_cursor.assert_not_called()
+        hub._cloud_schedule_poll.assert_not_called()
+
     def test_ui_dispatch_timeout_releases_retry_state(self):
         hub = SimpleNamespace(
             _my_id="local-id",
