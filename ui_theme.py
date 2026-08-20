@@ -12,6 +12,10 @@ def _install_font(app: QApplication) -> None:
         "Microsoft YaHei UI",
         "Microsoft YaHei",
         "Noto Sans CJK SC",
+        "Noto Sans CJK TC",
+        "Noto Sans SC",
+        "Droid Sans Fallback",
+        "AR PL UMing CN",
         "WenQuanYi Zen Hei",
         "Segoe UI",
     ):
