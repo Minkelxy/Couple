@@ -161,6 +161,8 @@ class SyncHub(QObject):
         self._thread: threading.Thread | None = None
         self._cloud_timer: threading.Timer | None = None
         self._heartbeat_timer: threading.Timer | None = None
+        self._lifecycle_lock = threading.RLock()
+        self._started = False
         # stop() 后阻止轮询/心跳重新调度，避免退出后残留网络请求
         self._stopped = False
         # 云同步：本机 sender_id 用于自收信去重；游标持久化避免重启重复投递
@@ -208,32 +210,37 @@ class SyncHub(QObject):
     # ---------- 服务端 ----------
 
     def start(self) -> bool:
-        started = False
-        mode = self._cfg.get("sync_mode", "lan")
-        if mode in ("lan", "both") and self._cfg.get("sync_enabled", False):
-            port = int(self._cfg.get("sync_port", DEFAULT_PORT))
-            handler_cls = _make_handler(self)
-            try:
-                self._server = socketserver.ThreadingTCPServer(
-                    ("0.0.0.0", port), handler_cls
-                )
-                self._server.daemon_threads = True
-            except OSError:
-                # 端口被占用
-                self.send_result.emit(False, f"监听端口 {port} 被占用")
-            else:
-                self._thread = threading.Thread(
-                    target=self._server.serve_forever, daemon=True
-                )
-                self._thread.start()
+        with self._lifecycle_lock:
+            if self._started:
+                return True
+            self._stopped = False
+            started = False
+            mode = self._cfg.get("sync_mode", "lan")
+            if mode in ("lan", "both") and self._cfg.get("sync_enabled", False):
+                port = int(self._cfg.get("sync_port", DEFAULT_PORT))
+                handler_cls = _make_handler(self)
+                try:
+                    self._server = socketserver.ThreadingTCPServer(
+                        ("0.0.0.0", port), handler_cls
+                    )
+                    self._server.daemon_threads = True
+                except OSError:
+                    # 端口被占用
+                    self.send_result.emit(False, f"监听端口 {port} 被占用")
+                else:
+                    self._thread = threading.Thread(
+                        target=self._server.serve_forever, daemon=True
+                    )
+                    self._thread.start()
+                    started = True
+            if mode in ("cloud", "both") and self._cloud_client is not None:
+                self._cloud_schedule_poll()
+                self._flush_cloud_outbox()
                 started = True
-        if mode in ("cloud", "both") and self._cloud_client is not None:
-            self._cloud_schedule_poll()
-            self._flush_cloud_outbox()
-            started = True
-            # 启动心跳广播（仅云模式有意义，告知对方本机在线）
-            self._heartbeat_schedule()
-        return started
+                # 启动心跳广播（仅云模式有意义，告知对方本机在线）
+                self._heartbeat_schedule()
+            self._started = started
+            return started
 
     # ---------- 云游标持久化 ----------
 
@@ -280,22 +287,24 @@ class SyncHub(QObject):
             pass
 
     def stop(self) -> None:
-        self._stopped = True
-        if self._heartbeat_timer is not None:
-            self._heartbeat_timer.cancel()
-            self._heartbeat_timer = None
-        if self._cloud_timer is not None:
-            self._cloud_timer.cancel()
-            self._cloud_timer = None
-        server = self._server
-        self._server = None
-        if server is not None:
-            server.shutdown()
-            server.server_close()
-        thread = self._thread
-        self._thread = None
-        if thread is not None and thread is not threading.current_thread():
-            thread.join(timeout=2)
+        with self._lifecycle_lock:
+            self._stopped = True
+            self._started = False
+            if self._heartbeat_timer is not None:
+                self._heartbeat_timer.cancel()
+                self._heartbeat_timer = None
+            if self._cloud_timer is not None:
+                self._cloud_timer.cancel()
+                self._cloud_timer = None
+            server = self._server
+            self._server = None
+            if server is not None:
+                server.shutdown()
+                server.server_close()
+            thread = self._thread
+            self._thread = None
+            if thread is not None and thread is not threading.current_thread():
+                thread.join(timeout=2)
 
     # ---------- 客户端 ----------
 

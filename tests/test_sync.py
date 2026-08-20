@@ -122,6 +122,8 @@ class SyncTransportTests(unittest.TestCase):
     def test_stop_closes_lan_server_socket(self):
         server = Mock()
         hub = SimpleNamespace(
+            _lifecycle_lock=threading.RLock(),
+            _started=True,
             _stopped=False,
             _heartbeat_timer=None,
             _cloud_timer=None,
@@ -135,6 +137,34 @@ class SyncTransportTests(unittest.TestCase):
         self.assertIsNone(hub._server)
         server.shutdown.assert_called_once_with()
         server.server_close.assert_called_once_with()
+
+    def test_start_is_idempotent_and_restartable_after_stop(self):
+        hub = SimpleNamespace(
+            _lifecycle_lock=threading.RLock(),
+            _started=False,
+            _stopped=True,
+            _cfg={"sync_mode": "cloud"},
+            _cloud_client=object(),
+            _server=None,
+            _thread=None,
+            _cloud_timer=None,
+            _heartbeat_timer=None,
+            _cloud_schedule_poll=Mock(),
+            _flush_cloud_outbox=Mock(),
+            _heartbeat_schedule=Mock(),
+        )
+        self.assertTrue(SyncHub.start(hub))
+        self.assertTrue(SyncHub.start(hub))
+        self.assertEqual(hub._cloud_schedule_poll.call_count, 1)
+        self.assertEqual(hub._flush_cloud_outbox.call_count, 1)
+        self.assertEqual(hub._heartbeat_schedule.call_count, 1)
+
+        SyncHub.stop(hub)
+        self.assertTrue(SyncHub.start(hub))
+
+        self.assertEqual(hub._cloud_schedule_poll.call_count, 2)
+        self.assertEqual(hub._flush_cloud_outbox.call_count, 2)
+        self.assertEqual(hub._heartbeat_schedule.call_count, 2)
 
     def test_invalid_outbox_attachment_does_not_leave_inflight_marker(self):
         item_id = "message-1"
