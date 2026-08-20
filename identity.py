@@ -128,8 +128,11 @@ def ensure_identity() -> tuple[bytes, object]:
             try:
                 pk_bytes = _b64d(record["pk_b64"])
                 _load_ed25519_public_key(pk_bytes)
+                cached_pk = _cached_sk.public_key().public_bytes_raw()
+                if cached_pk != pk_bytes:
+                    raise ValueError("缓存私钥与公钥文件不匹配")
                 return pk_bytes, _cached_sk
-            except (KeyError, TypeError, ValueError):
+            except (AttributeError, KeyError, TypeError, ValueError):
                 _cached_sk = None
         if _MY_SK_ENC.exists() and _MY_PK_JSON.exists():
             try:

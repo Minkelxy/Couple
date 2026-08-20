@@ -50,6 +50,44 @@ class IdentityPersistenceTests(unittest.TestCase):
                 identity._PARTNER_JSON = original_path
                 identity._PARTNER_STORE = original_store
 
+    def test_cached_private_key_must_match_public_key_file(self):
+        cached_key = Ed25519PrivateKey.generate()
+        restored_key = Ed25519PrivateKey.generate()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            original_sk = identity._MY_SK_ENC
+            original_pk = identity._MY_PK_JSON
+            original_store = identity._MY_PK_STORE
+            original_cached_sk = identity._cached_sk
+            original_cached_status = identity._cached_status
+            identity._MY_SK_ENC = Path(tmp) / "my_sk.enc"
+            identity._MY_PK_JSON = Path(tmp) / "my_pk.json"
+            identity._MY_PK_STORE = AtomicJsonStore(identity._MY_PK_JSON, {})
+            identity._MY_SK_ENC.write_bytes(b"encrypted")
+            identity._MY_PK_STORE.save({
+                "pk_b64": identity._b64e(restored_key.public_key().public_bytes_raw()),
+            })
+            identity._cached_sk = cached_key
+            try:
+                with patch.object(
+                    identity,
+                    "_fernet_dec",
+                    return_value=restored_key.private_bytes_raw(),
+                ):
+                    public_key, private_key = identity.ensure_identity()
+
+                self.assertEqual(public_key, restored_key.public_key().public_bytes_raw())
+                self.assertEqual(
+                    private_key.public_key().public_bytes_raw(),
+                    restored_key.public_key().public_bytes_raw(),
+                )
+            finally:
+                identity._MY_SK_ENC = original_sk
+                identity._MY_PK_JSON = original_pk
+                identity._MY_PK_STORE = original_store
+                identity._cached_sk = original_cached_sk
+                identity._cached_status = original_cached_status
+
 
 if __name__ == "__main__":
     unittest.main()

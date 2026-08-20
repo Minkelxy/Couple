@@ -341,6 +341,11 @@ def main() -> int:
             "恢复将覆盖当前所有数据（照片、信件、配置），确定继续吗？"
         ) != QMessageBox.Yes:
             return
+        # 停止后台同步后再替换 config/data，避免旧 hub 在恢复过程中写回旧状态。
+        try:
+            hub_holder["hub"].stop()
+        except Exception:
+            pass
         try:
             backup.restore_backup(Path(path))
             pf_window.reload(pf_config.load())
@@ -357,8 +362,19 @@ def main() -> int:
                 app.quit()
                 os._exit(0)
             else:
+                on_settings_changed()
+                if settings_win is not None:
+                    try:
+                        settings_win._load_values()
+                    except Exception:
+                        log_exception("恢复备份后刷新设置窗口失败")
                 tray.show_success("数据已恢复", "恢复")
         except Exception as e:
+            # 恢复失败也要把旧配置重新启动的同步服务拉起来。
+            try:
+                on_settings_changed()
+            except Exception:
+                log_exception("恢复备份失败后重启同步服务失败")
             tray.show_error(friendly_error(e, "恢复备份"), "恢复失败")
 
     def open_checkin() -> None:
