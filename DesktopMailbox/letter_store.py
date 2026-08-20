@@ -64,6 +64,16 @@ def _load_meta() -> list[dict]:
             parsed = parsed.astimezone().replace(tzinfo=None)
         item = dict(raw)
         item["deliver_at"] = parsed.isoformat(timespec="minutes")
+        created_at = item.get("created_at")
+        if not isinstance(created_at, str):
+            created_at = deliver_at
+        try:
+            created_parsed = datetime.fromisoformat(created_at)
+        except ValueError:
+            created_parsed = parsed
+        if created_parsed.tzinfo is not None:
+            created_parsed = created_parsed.astimezone().replace(tzinfo=None)
+        item["created_at"] = created_parsed.isoformat(timespec="seconds")
         if not isinstance(item.get("read"), bool):
             item["read"] = False
         valid.append(item)

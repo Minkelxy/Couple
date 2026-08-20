@@ -87,6 +87,7 @@ class LetterStorePersistenceTests(unittest.TestCase):
                     {
                         "id": valid_id,
                         "deliver_at": datetime.now().isoformat(timespec="minutes"),
+                        "created_at": "not-a-date",
                         "read": False,
                         "title": "valid",
                     },
@@ -95,9 +96,9 @@ class LetterStorePersistenceTests(unittest.TestCase):
                     {"id": "b" * 12, "deliver_at": "2099-01-01T00:00", "read": "yes"},
                 ])
 
-                self.assertEqual(
-                    [item["id"] for item in letter_store.list_letters()], [valid_id]
-                )
+                listed = letter_store.list_letters()
+                self.assertEqual([item["id"] for item in listed], [valid_id])
+                self.assertEqual(listed[0]["created_at"], listed[0]["deliver_at"] + ":00")
                 self.assertEqual(
                     [item["id"] for item in letter_store.list_due_unread()], [valid_id]
                 )
