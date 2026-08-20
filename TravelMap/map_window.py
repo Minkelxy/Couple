@@ -91,14 +91,17 @@ def handle_partner_event(meta: dict, content: str, attachment: bytes,
             safe_city = safe_filename(city, fallback="city")
             filename = f"{int(time.time())}_{safe_city}{ext}"
             dest_dir = app_paths.TRAVEL_DIR / "partner_photos"
-            dest_dir.mkdir(parents=True, exist_ok=True)
             dest = dest_dir / filename
             try:
+                dest_dir.mkdir(parents=True, exist_ok=True)
                 atomic_write_bytes(dest, attachment)
                 photo_filename = f"partner_photos/{filename}"
             except OSError:
                 log_warning("写入对方旅行照片失败: %s", filename)
-    store.add_partner_city(city, lat, lng, note, photo_filename)
+    try:
+        store.add_partner_city(city, lat, lng, note, photo_filename)
+    except OSError:
+        log_warning("写入对方旅行记录失败: %s", city)
 
 
 class _EditCityDialog(QDialog):

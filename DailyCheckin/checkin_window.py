@@ -66,9 +66,9 @@ def _save_partner_image(attachment: bytes, att_ext: str, date_str: str) -> str:
     safe_date = safe_filename(date_str, fallback="partner")
     filename = f"{int(time.time())}_{safe_date}{ext}"
     dest_dir = store.PARTNER_IMAGES_DIR
-    dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / filename
     try:
+        dest_dir.mkdir(parents=True, exist_ok=True)
         atomic_write_bytes(dest, attachment)
         return filename
     except OSError:
@@ -104,7 +104,11 @@ def handle_partner_event(meta: dict, content: str, attachment: bytes,
     if not isinstance(note, str):
         note = str(note)
     image_path = _save_partner_image(attachment, att_ext, date_str)
-    store.add_partner_record(date_str, mood, note, image_path)
+    try:
+        store.add_partner_record(date_str, mood, note, image_path)
+    except OSError:
+        log_warning("写入对方打卡记录失败: %s", date_str)
+        return
     win = _active_window() if _active_window is not None else None
     if win is not None:
         win.refresh_partner_sidebar()

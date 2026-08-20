@@ -757,14 +757,17 @@ def handle_partner_event(
         log_warning("拒绝接收共享照片: %s", err)
         return
     shared_dir = app_paths.DATA_DIR / "shared_photos"
-    shared_dir.mkdir(parents=True, exist_ok=True)
     # 文件名安全化：去除任何路径分隔符
     raw_name = meta.get("filename", "photo")
     safe_name = safe_filename(raw_name, fallback="photo")
     filename = f"{int(time.time())}_{safe_name}"
     try:
+        shared_dir.mkdir(parents=True, exist_ok=True)
         atomic_write_bytes(shared_dir / filename, attachment)
     except OSError:
         log_exception("写入共享照片失败: %s", filename)
         return
-    config.add_partner_album_path(str(shared_dir))
+    try:
+        config.add_partner_album_path(str(shared_dir))
+    except OSError:
+        log_warning("注册对方共享相册失败: %s", shared_dir)

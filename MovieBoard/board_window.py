@@ -56,11 +56,14 @@ def handle_partner_event(
     movie_id = meta.get("movie_id")
     if movie_id is None:
         return
-    store.set_partner_status(
-        movie_id,
-        meta.get("status"),
-        meta.get("rating"),
-    )
+    try:
+        store.set_partner_status(
+            movie_id,
+            meta.get("status"),
+            meta.get("rating"),
+        )
+    except OSError:
+        log_exception("写入对方影视状态失败: %s", movie_id)
 
 
 class _SearchWorker(QThread):
