@@ -30,28 +30,28 @@ class CalendarWidget(QWidget):
     def _build_ui(self) -> None:
         layout = QGridLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(4)
+        layout.setSpacing(5)
 
         # 顶部月份切换
         self._prev_btn = QPushButton("◀", self)
         self._prev_btn.setFixedWidth(36)
         self._prev_btn.setStyleSheet(
-            "QPushButton{border:none; font-size:16px; color:#e65a7a;}"
-            "QPushButton:hover{color:#d94a6a;}"
+            "QPushButton{border:none; font-size:16px; color:#d84f68;}"
+            "QPushButton:hover{color:#b83d54;}"
         )
         self._prev_btn.clicked.connect(self._prev_month)
 
         self._month_label = QLabel("", self)
         self._month_label.setAlignment(Qt.AlignCenter)
         self._month_label.setStyleSheet(
-            "font-size:16px; font-weight:600; color:#e65a7a;"
+            "font-size:17px; font-weight:700; color:#263238;"
         )
 
         self._next_btn = QPushButton("▶", self)
         self._next_btn.setFixedWidth(36)
         self._next_btn.setStyleSheet(
-            "QPushButton{border:none; font-size:16px; color:#e65a7a;}"
-            "QPushButton:hover{color:#d94a6a;}"
+            "QPushButton{border:none; font-size:16px; color:#d84f68;}"
+            "QPushButton:hover{color:#b83d54;}"
         )
         self._next_btn.clicked.connect(self._next_month)
 
@@ -66,7 +66,7 @@ class CalendarWidget(QWidget):
         for col, header in enumerate(_WEEK_HEADERS):
             lbl = QLabel(header, self)
             lbl.setAlignment(Qt.AlignCenter)
-            lbl.setStyleSheet("color:#999; font-size:12px; padding:4px;")
+            lbl.setStyleSheet("color:#7b8794; font-size:12px; padding:4px;")
             layout.addWidget(lbl, 1, col)
 
         # 6 行 x 7 列 日期格
@@ -83,21 +83,21 @@ class CalendarWidget(QWidget):
 
     @staticmethod
     def _cell_style(is_today: bool, has_record: bool, has_partner: bool = False) -> str:
-        border = "2px solid #e65a7a" if is_today else "1px solid #eee"
+        border = "2px solid #e85d75" if is_today else "1px solid #dfe5ec"
         if is_today:
-            bg = "#fdf2f5"
+            bg = "#fff0f3"
         elif has_partner and has_record:
-            bg = "#f3eef9"  # 双方都有：粉紫
+            bg = "#f2eff8"  # 双方都有：粉紫
         elif has_partner:
-            bg = "#eaf1ff"  # 仅 TA：淡蓝
+            bg = "#eef5f7"  # 仅 TA：淡蓝
         elif has_record:
-            bg = "#fef7f9"  # 仅自己：淡粉
+            bg = "#fff8f9"  # 仅自己：淡粉
         else:
             bg = "#fff"
         return (
             f"QPushButton{{border:{border}; border-radius:8px;"
             f"background:{bg}; font-size:16px; color:#333;}}"
-            f"QPushButton:hover{{background:#fce4ea;}}"
+            f"QPushButton:hover{{background:#fff0f3;}}"
         )
 
     def _prev_month(self) -> None:

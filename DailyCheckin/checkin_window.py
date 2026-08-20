@@ -264,7 +264,8 @@ class CheckinWindow(QMainWindow):
         global _active_window
         _active_window = weakref.ref(self)
         self.setWindowTitle("打卡日历 📅")
-        self.resize(1180, 650)
+        self.resize(1220, 720)
+        self.setMinimumSize(1060, 640)
         self._build_ui()
         self._refresh_chart()
         self.refresh_partner_sidebar()
@@ -276,36 +277,55 @@ class CheckinWindow(QMainWindow):
     def _build_ui(self) -> None:
         central = QWidget(self)
         self.setCentralWidget(central)
-        layout = QHBoxLayout(central)
-        layout.setContentsMargins(20, 16, 20, 16)
-        layout.setSpacing(16)
+        layout = QVBoxLayout(central)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(10)
+
+        header = QVBoxLayout()
+        header.setSpacing(2)
+        title = QLabel("打卡日历", self)
+        title.setStyleSheet("font-size:24px; font-weight:700; color:#263238;")
+        subtitle = QLabel("记录今天的心情，也看看彼此最近的状态", self)
+        subtitle.setStyleSheet("color:#7b8794; font-size:13px;")
+        header.addWidget(title)
+        header.addWidget(subtitle)
+        layout.addLayout(header)
+
+        body = QHBoxLayout()
+        body.setSpacing(16)
+        layout.addLayout(body, 1)
 
         # ---- 左侧：日历 + 连续打卡 + 今日打卡按钮 ----
         left = QVBoxLayout()
         left.setSpacing(12)
         self._calendar = CalendarWidget(self)
+        self._calendar.setObjectName("calendarPanel")
+        self._calendar.setStyleSheet(
+            "QWidget#calendarPanel{background:#ffffff;border:1px solid #dfe5ec;"
+            "border-radius:8px;}"
+        )
         self._calendar.day_clicked.connect(self._on_day_clicked)
         left.addWidget(self._calendar)
 
         self._streak_label = QLabel("", self)
         self._streak_label.setAlignment(Qt.AlignCenter)
         self._streak_label.setStyleSheet(
-            "background:#fdf2f5; border-radius:10px; padding:10px;"
-            "font-size:15px; color:#333;"
+            "background:#fff0f3; border:1px solid #f4c5ce; border-radius:8px;"
+            "padding:10px; font-size:15px; color:#263238;"
         )
         left.addWidget(self._streak_label)
 
         self._today_btn = QPushButton("📝 今日打卡", self)
         self._today_btn.setStyleSheet(
-            "QPushButton{background:#e65a7a; color:#fff; border:none;"
-            "border-radius:8px; padding:12px; font-size:15px;}"
-            "QPushButton:hover{background:#d94a6a;}"
+            "QPushButton{background:#e85d75; color:#fff; border:none;"
+            "border-radius:6px; padding:11px; font-size:15px;font-weight:600;}"
+            "QPushButton:hover{background:#d94f68;}"
         )
         self._today_btn.clicked.connect(self._checkin_today)
         left.addWidget(self._today_btn)
 
         left.addStretch(1)
-        layout.addLayout(left, 1)
+        body.addLayout(left, 1)
 
         # ---- 右侧：心情趋势图 + 切换按钮 ----
         right = QVBoxLayout()
@@ -315,32 +335,32 @@ class CheckinWindow(QMainWindow):
 
         self._refresh_btn = QPushButton("🔄 查看心情趋势", self)
         self._refresh_btn.setStyleSheet(
-            "QPushButton{background:#fdf2f5; color:#e65a7a;"
-            "border:1px solid #e65a7a; border-radius:8px; padding:8px;"
+            "QPushButton{background:#ffffff; color:#d84f68;"
+            "border:1px solid #e8a0ad; border-radius:6px; padding:8px;"
             "font-size:13px;}"
-            "QPushButton:hover{background:#fce4ea;}"
+            "QPushButton:hover{background:#fff0f3;}"
         )
         self._refresh_btn.clicked.connect(self._refresh_chart)
         right.addWidget(self._refresh_btn)
-        layout.addLayout(right, 1)
+        body.addLayout(right, 1)
 
         # ---- 最右：对方的心情 ----
         partner_col = QVBoxLayout()
         partner_col.setSpacing(8)
         partner_title = QLabel("对方的心情 💙", self)
         partner_title.setStyleSheet(
-            "font-size:14px; font-weight:600; color:#3a7bd5;"
+            "font-size:15px; font-weight:700; color:#52616d;"
         )
         partner_col.addWidget(partner_title)
         self._partner_list = QListWidget(self)
         self._partner_list.setFixedWidth(210)
         self._partner_list.setStyleSheet(
-            "QListWidget{border:1px solid #d8e4ff; border-radius:8px;"
-            "background:#f5f9ff; font-size:13px;}"
-            "QListWidget::item{padding:8px 6px; border-bottom:1px solid #eaf1ff;}"
+            "QListWidget{border:1px solid #dfe5ec; border-radius:8px;"
+            "background:#ffffff; font-size:13px;}"
+            "QListWidget::item{padding:8px 6px; border-bottom:1px solid #edf1f5;}"
         )
         partner_col.addWidget(self._partner_list)
-        layout.addLayout(partner_col, 0)
+        body.addLayout(partner_col, 0)
 
         self._update_streak()
 

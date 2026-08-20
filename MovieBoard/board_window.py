@@ -40,10 +40,10 @@ _COL_DEFS = [
 
 
 def _btn_style() -> str:
-    return ("QPushButton{background:#e65a7a;color:#fff;border:none;"
-            "border-radius:8px;padding:8px 16px;font-size:14px;}"
-            "QPushButton:hover{background:#d94a6a;}"
-            "QPushButton:disabled{background:#e8b9c4;}")
+    return ("QPushButton{background:#e85d75;color:#fff;border:none;"
+            "border-radius:6px;padding:9px 16px;font-size:14px;font-weight:600;}"
+            "QPushButton:hover{background:#d94f68;}"
+            "QPushButton:disabled{background:#d9dee4;color:#fff;}")
 
 
 def handle_partner_event(
@@ -198,7 +198,8 @@ class _RatingDialog(QDialog):
     def __init__(self, movie: dict, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("评分短评")
-        self.resize(380, 340)
+        self.resize(420, 380)
+        self.setMinimumSize(380, 340)
         self._build(movie)
 
     def _build(self, movie: dict) -> None:
@@ -207,7 +208,7 @@ class _RatingDialog(QDialog):
         v.setSpacing(12)
 
         title = QLabel(movie.get("title", ""), self)
-        title.setStyleSheet("font-size:16px; font-weight:600; color:#e65a7a;")
+        title.setStyleSheet("font-size:18px; font-weight:700; color:#263238;")
         v.addWidget(title)
 
         tabs = QTabWidget(self)
@@ -278,7 +279,8 @@ class BoardWindow(QMainWindow):
     def __init__(self, hub=None) -> None:
         super().__init__()
         self.setWindowTitle("影视看板 🎬")
-        self.resize(1100, 700)
+        self.resize(1160, 740)
+        self.setMinimumSize(980, 640)
         self._hub = hub
         self._worker: QThread | None = None
         self._columns: dict[str, tuple[QListWidget, QLabel]] = {}
@@ -294,15 +296,21 @@ class BoardWindow(QMainWindow):
         central = QWidget(self)
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
-        root.setContentsMargins(16, 12, 16, 12)
+        root.setContentsMargins(24, 20, 24, 20)
         root.setSpacing(10)
 
-        # 顶部工具栏
+        # 顶部标题与工具栏
         bar = QHBoxLayout()
         bar.setSpacing(10)
-        title = QLabel("影视看板 🎬", central)
-        title.setStyleSheet("font-size:20px; font-weight:600; color:#e65a7a;")
-        bar.addWidget(title)
+        heading = QVBoxLayout()
+        heading.setSpacing(2)
+        title = QLabel("影视看板", central)
+        title.setStyleSheet("font-size:24px; font-weight:700; color:#263238;")
+        subtitle = QLabel("一起决定想看什么，也记录看完后的分数", central)
+        subtitle.setStyleSheet("color:#7b8794; font-size:13px;")
+        heading.addWidget(title)
+        heading.addWidget(subtitle)
+        bar.addLayout(heading)
         bar.addStretch(1)
 
         add_btn = QPushButton("➕ 添加影视", central)
@@ -329,15 +337,20 @@ class BoardWindow(QMainWindow):
         cl = QVBoxLayout(col)
         cl.setContentsMargins(0, 0, 0, 0)
         cl.setSpacing(8)
+        col.setObjectName("movieColumn")
+        col.setStyleSheet(
+            "QWidget#movieColumn{background:#ffffff;border:1px solid #dfe5ec;"
+            "border-radius:8px;}"
+        )
 
         head = QHBoxLayout()
         head.setSpacing(8)
         title = QLabel(f"{name} {emoji}", col)
-        title.setStyleSheet("font-size:16px; font-weight:600; color:#333;")
+        title.setStyleSheet("font-size:16px; font-weight:700; color:#263238;")
         head.addWidget(title)
         badge = QLabel("0", col)
         badge.setStyleSheet(
-            "background:#e65a7a; color:#fff; border-radius:9px;"
+            "background:#e85d75; color:#fff; border-radius:9px;"
             "padding:2px 8px; font-size:12px; min-width:14px;"
         )
         badge.setAlignment(Qt.AlignCenter)
@@ -348,8 +361,8 @@ class BoardWindow(QMainWindow):
         lw = QListWidget(col)
         lw.setContextMenuPolicy(Qt.CustomContextMenu)
         lw.setStyleSheet(
-            "QListWidget{background:#fdf2f5; border:none; border-radius:10px;}"
-            "QListWidget::item{border-bottom:1px solid #fce0e8;}"
+            "QListWidget{background:#f7f9fb; border:none; border-radius:7px;}"
+            "QListWidget::item{border-bottom:1px solid #e8edf2;}"
         )
         lw.customContextMenuRequested.connect(
             lambda pos, lw=lw, status=status: self._on_context_menu(lw, status, pos)
