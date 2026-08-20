@@ -66,6 +66,20 @@ class MailboxConfigTests(unittest.TestCase):
             finally:
                 config._STORE = original_store
 
+    def test_update_persists_normalized_sync_settings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_store = config._STORE
+            config._STORE = AtomicJsonStore(Path(tmp) / "mailbox.json", {})
+            try:
+                updated = config.update(sync_enabled="yes", sync_mode="bad", cloud_server=42)
+
+                self.assertFalse(updated["sync_enabled"])
+                self.assertEqual(updated["sync_mode"], "lan")
+                self.assertEqual(updated["cloud_server"], "")
+                self.assertFalse(config._STORE.load()["sync_enabled"])
+            finally:
+                config._STORE = original_store
+
 
 if __name__ == "__main__":
     unittest.main()

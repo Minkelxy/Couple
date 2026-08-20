@@ -60,11 +60,10 @@ def _text(value, default: str = "") -> str:
     return value.strip() if isinstance(value, str) else default
 
 
-def load() -> dict:
+def _normalize(data: dict | None) -> dict:
+    stored = data if isinstance(data, dict) else {}
     data = deepcopy(DEFAULTS)
-    stored = _STORE.load()
-    if isinstance(stored, dict):
-        data.update(stored)
+    data.update(stored)
     data["sync_enabled"] = data.get("sync_enabled") if isinstance(data.get("sync_enabled"), bool) else DEFAULTS["sync_enabled"]
     data["sync_mode"] = data.get("sync_mode") if data.get("sync_mode") in ("lan", "cloud", "both") else DEFAULTS["sync_mode"]
     for key in ("peer_host", "cloud_server", "cloud_pair_code"):
@@ -82,6 +81,10 @@ def load() -> dict:
     return data
 
 
+def load() -> dict:
+    return _normalize(_STORE.load())
+
+
 def save(data: dict) -> None:
     _STORE.save(data)
 
@@ -90,11 +93,11 @@ def update(**kwargs) -> dict:
     data = _STORE.load()
     if not isinstance(data, dict):
         data = {}
-    merged = deepcopy(DEFAULTS)
-    merged.update(data)
+    merged = dict(data)
     merged.update(kwargs)
-    _STORE.save(merged)
-    return merged
+    normalized = _normalize(merged)
+    _STORE.save(normalized)
+    return normalized
 
 
 def ensure_dirs() -> None:
