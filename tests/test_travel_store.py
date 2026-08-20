@@ -54,6 +54,28 @@ class TravelStoreTests(unittest.TestCase):
             finally:
                 store._store = original_store
 
+    def test_load_removes_invalid_coordinates_and_records(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_store = store._store
+            store._store = AtomicJsonStore(Path(tmp) / "cities.json", [])
+            try:
+                store._store.save([
+                    {"city_name": "Valid", "lat": "31.3", "lng": 120.6},
+                    {"city_name": "Broken", "lat": "nan", "lng": 200},
+                    {"city_name": "", "lat": 1, "lng": 2},
+                    {"city_name": 123, "lat": 1, "lng": 2},
+                ])
+
+                self.assertEqual(
+                    store._load(),
+                    [
+                        {"city_name": "Valid", "lat": 31.3, "lng": 120.6, "source": "self"},
+                        {"city_name": "Broken", "source": "self"},
+                    ],
+                )
+            finally:
+                store._store = original_store
+
 
 if __name__ == "__main__":
     unittest.main()

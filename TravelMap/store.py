@@ -12,6 +12,8 @@
 """
 from __future__ import annotations
 
+import math
+
 import app_paths
 from common_utils import AtomicJsonStore
 
@@ -35,12 +37,26 @@ def _load() -> list[dict]:
         if not isinstance(it, dict):
             continue
         normalized = dict(it)
+        if not isinstance(normalized.get("city_name"), str) or not normalized["city_name"]:
+            continue
         if normalized.get("source") not in _VALID_SOURCES:
             normalized["source"] = "self"
         if "type" in normalized and normalized.get("type") not in _VALID_TYPES:
             normalized["type"] = "visited"
         if "date" in normalized and not isinstance(normalized.get("date"), str):
             normalized["date"] = ""
+        for key, minimum, maximum in (("lat", -90.0, 90.0), ("lng", -180.0, 180.0)):
+            if key not in normalized:
+                continue
+            try:
+                value = float(normalized[key])
+            except (TypeError, ValueError):
+                normalized.pop(key, None)
+                continue
+            if not math.isfinite(value) or not minimum <= value <= maximum:
+                normalized.pop(key, None)
+            else:
+                normalized[key] = value
         valid_items.append(normalized)
     return valid_items
 
