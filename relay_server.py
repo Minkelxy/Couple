@@ -75,6 +75,7 @@ _MIN_PAIR_LEN = 3
 _MAX_ATTACH_EXT_LEN = 32
 _MAX_SINCE_LEN = 64
 _MAX_CURSOR_LEN = 20
+_POLL_RESPONSE_MAX_BYTES = 96 * 1024 * 1024
 _POLL_BATCH_LIMIT = 1000  # 单次 poll 最多返回 1000 封，避免断网很久回来的 OOM
 # 整个请求体大小上限：content 2MB + attach 100MB + meta 64KB + pair_code 128B + 余量
 _MAX_REQUEST_BYTES = 110 * 1024 * 1024
@@ -887,11 +888,25 @@ def api_poll() -> tuple:
 
     letters = []
     skipped_ids = []
+    response_bytes = 0
+    selected_rows = 0
     # Never advance beyond the snapshot. With no rows, returning poll_until is
     # safe because rows created after it are excluded from this query.
     server_ts = poll_until
     server_cursor = query_cursor if cursor is not None else 0
     for r in rows:
+        item_bytes = (
+            len(r["meta"].encode("utf-8"))
+            + len(r["content_b64"])
+            + len(r["attach_b64"])
+            + len(r["attach_ext"])
+            + 256
+        )
+        if selected_rows and response_bytes + item_bytes > _POLL_RESPONSE_MAX_BYTES:
+            has_more = True
+            break
+        response_bytes += item_bytes
+        selected_rows += 1
         if not _stored_letter_is_valid(r, channel_id if channel_id else None):
             skipped_ids.append(int(r["id"]))
             server_cursor = r["id"]

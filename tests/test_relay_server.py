@@ -95,6 +95,52 @@ class RelayPollingTests(unittest.TestCase):
             finally:
                 relay_server._DB_PATH = original_db_path
 
+    def test_poll_response_is_bounded_and_cursor_continues(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_db_path = relay_server._DB_PATH
+            original_limit = relay_server._POLL_RESPONSE_MAX_BYTES
+            relay_server._DB_PATH = Path(tmp) / "letters.db"
+            relay_server._POLL_RESPONSE_MAX_BYTES = 450
+            try:
+                relay_server._init_db()
+                with relay_server._db_session() as conn:
+                    for content in ("first", "second"):
+                        conn.execute(
+                            "INSERT INTO letters(pair_code, message_id, meta, "
+                            "content_b64, attach_b64, attach_ext, created_at) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            (
+                                "bounded-poll",
+                                content,
+                                json.dumps({"type": "letter"}),
+                                base64.b64encode(content.encode()).decode(),
+                                "",
+                                "",
+                                relay_server._now_iso(),
+                            ),
+                        )
+                    conn.commit()
+
+                client = relay_server.app.test_client()
+                first = client.get("/api/poll?pair_code=bounded-poll")
+                first_payload = first.get_json()
+                self.assertEqual(first.status_code, 200)
+                self.assertTrue(first_payload["has_more"])
+                self.assertEqual(len(first_payload["letters"]), 1)
+
+                second = client.get(
+                    f"/api/poll?pair_code=bounded-poll&cursor={first_payload['server_cursor']}"
+                )
+                self.assertEqual(second.status_code, 200)
+                self.assertEqual(len(second.get_json()["letters"]), 1)
+                self.assertEqual(
+                    base64.b64decode(second.get_json()["letters"][0]["content_base64"]),
+                    b"second",
+                )
+            finally:
+                relay_server._DB_PATH = original_db_path
+                relay_server._POLL_RESPONSE_MAX_BYTES = original_limit
+
     def test_index_does_not_expose_database_statistics(self):
         response = relay_server.app.test_client().get("/")
 

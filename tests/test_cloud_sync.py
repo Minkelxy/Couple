@@ -17,8 +17,8 @@ class _Response:
     def __exit__(self, *args):
         return False
 
-    def read(self):
-        return self.body
+    def read(self, size=-1):
+        return self.body if size < 0 else self.body[:size]
 
 
 class CloudSyncParsingTests(unittest.TestCase):
@@ -113,6 +113,22 @@ class CloudSyncParsingTests(unittest.TestCase):
         self.assertEqual(len(letters), 1)
         self.assertEqual(server_ts, "42")
         warning.assert_called_once()
+
+    def test_poll_rejects_oversized_response_without_advancing_cursor(self):
+        payload = {"server_cursor": "42", "letters": []}
+        oversized = json.dumps(payload).encode("utf-8") + b"x" * 32
+        with patch(
+            "DesktopMailbox.cloud_sync.urllib.request.urlopen",
+            return_value=_Response(oversized),
+        ), patch.object(
+            self.client, "_build_poll_url", return_value="https://relay.invalid/poll"
+        ), patch(
+            "DesktopMailbox.cloud_sync._MAX_POLL_RESPONSE_BYTES", len(oversized) - 1
+        ):
+            letters, server_ts = self.client.poll_letters("41")
+
+        self.assertEqual(letters, [])
+        self.assertEqual(server_ts, "")
 
     def test_send_rejects_non_json_response(self):
         with patch(

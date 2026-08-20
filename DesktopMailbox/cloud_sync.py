@@ -28,6 +28,7 @@ from common_utils import MAX_ATTACHMENT_BYTES, log_exception, log_info, log_warn
 _MAX_CONTENT_BYTES = 2 * 1024 * 1024
 _MAX_ATTACHMENT_B64_LEN = 4 * ((MAX_ATTACHMENT_BYTES + 2) // 3)
 _MAX_ATTACHMENT_EXT_BYTES = 32
+_MAX_POLL_RESPONSE_BYTES = 128 * 1024 * 1024
 
 
 def _normalize_server_ts(value) -> str:
@@ -123,7 +124,10 @@ class CloudSyncClient:
             url = self._build_poll_url(since_ts or "")
             req = urllib.request.Request(url, method="GET")
             with urllib.request.urlopen(req, timeout=10) as resp:
-                raw = resp.read()
+                raw = resp.read(_MAX_POLL_RESPONSE_BYTES + 1)
+            if len(raw) > _MAX_POLL_RESPONSE_BYTES:
+                log_warning("cloud poll response too large; retaining cursor")
+                return [], ""
             data = json.loads(raw.decode("utf-8"))
             server_cursor = _normalize_cursor(data.get("server_cursor"))
             server_ts = server_cursor or _normalize_server_ts(data.get("server_ts", ""))
