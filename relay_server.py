@@ -892,7 +892,7 @@ def api_poll() -> tuple:
     server_ts = poll_until
     server_cursor = query_cursor if cursor is not None else 0
     for r in rows:
-        if not _stored_letter_is_valid(r):
+        if not _stored_letter_is_valid(r, channel_id if channel_id else None):
             skipped_ids.append(int(r["id"]))
             server_cursor = r["id"]
             if r["created_at"] > server_ts:
@@ -1005,7 +1005,7 @@ def _loads(s: str):
         return {}
 
 
-def _stored_letter_is_valid(row) -> bool:
+def _stored_letter_is_valid(row, channel_id: str | None = None) -> bool:
     """Detect rows damaged outside the validated send API before polling."""
     try:
         meta = json.loads(row["meta"])
@@ -1013,7 +1013,18 @@ def _stored_letter_is_valid(row) -> bool:
             return False
         if not _validate_payload_b64(row["content_b64"], row["attach_b64"]):
             return False
-        return isinstance(row["attach_ext"], str) and len(row["attach_ext"]) <= _MAX_ATTACH_EXT_LEN
+        if not isinstance(row["attach_ext"], str) or len(row["attach_ext"]) > _MAX_ATTACH_EXT_LEN:
+            return False
+        if channel_id:
+            ok, _message = _resolve_and_verify_channel(
+                channel_id,
+                meta,
+                row["content_b64"],
+                row["attach_b64"],
+                row["attach_ext"],
+            )
+            return ok
+        return True
     except (TypeError, ValueError, json.JSONDecodeError):
         return False
 

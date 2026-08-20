@@ -1,4 +1,5 @@
 import base64
+import json
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import sqlite3
@@ -488,6 +489,52 @@ class RelayPollingTests(unittest.TestCase):
                 self.assertEqual(payload["letters"], [])
                 self.assertEqual(payload["skipped_ids"], [row_id])
                 self.assertEqual(payload["server_cursor"], str(row_id))
+            finally:
+                relay_server._DB_PATH = original_db_path
+
+    def test_channel_poll_skips_stored_row_with_invalid_signature(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_db_path = relay_server._DB_PATH
+            relay_server._DB_PATH = Path(tmp) / "letters.db"
+            try:
+                relay_server._init_db()
+                sender_key = Ed25519PrivateKey.generate()
+                receiver_key = Ed25519PrivateKey.generate()
+                sender_pk = relay_server._b64e(sender_key.public_key().public_bytes_raw())
+                receiver_pk = relay_server._b64e(receiver_key.public_key().public_bytes_raw())
+                channel_id = "channel-corrupt-signature"
+                relay_server._save_channel(channel_id, sender_pk, receiver_pk)
+                content_b64 = "aGVsbG8="
+                meta = {"type": "letter", "pk_fp": relay_server._pk_fp(
+                    sender_key.public_key().public_bytes_raw()
+                ), "sig_b64": "tampered"}
+                with relay_server._db_session() as conn:
+                    conn.execute(
+                        "INSERT INTO letters "
+                        "(pair_code, message_id, meta, content_b64, attach_b64, attach_ext, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (channel_id, "bad-signature", json.dumps(meta), content_b64, "", "", relay_server._now_iso()),
+                    )
+                    conn.commit()
+
+                receiver_fp = relay_server._pk_fp(receiver_key.public_key().public_bytes_raw())
+                auth = receiver_key.sign(
+                    f"poll_auth|{channel_id}|{receiver_fp}|0".encode("utf-8")
+                )
+                response = relay_server.app.test_client().get(
+                    "/api/poll",
+                    query_string={
+                        "channel_id": channel_id,
+                        "pk_fp": receiver_fp,
+                        "sig_b64": relay_server._b64e(auth),
+                        "cursor": "0",
+                    },
+                )
+                payload = response.get_json()
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(payload["letters"], [])
+                self.assertEqual(payload["skipped_ids"], [1])
+                self.assertEqual(payload["server_cursor"], "1")
             finally:
                 relay_server._DB_PATH = original_db_path
 
