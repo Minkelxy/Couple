@@ -109,17 +109,23 @@ class HistoryWindow(QDialog):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("对局历史 ♟")
-        self.resize(820, 640)
+        self.resize(860, 680)
+        self.setMinimumSize(760, 580)
         self._build_ui()
 
     def _build_ui(self) -> None:
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(12, 12, 12, 12)
+        lay.setContentsMargins(24, 20, 24, 20)
         lay.setSpacing(12)
 
         left = QVBoxLayout()
         left.setSpacing(6)
-        left.addWidget(QLabel("双击查看棋谱：", self))
+        heading = QLabel("对局记录", self)
+        heading.setStyleSheet("font-size:18px; font-weight:700; color:#263238;")
+        left.addWidget(heading)
+        hint = QLabel("双击一局查看最终棋面", self)
+        hint.setStyleSheet("color:#7b8794; font-size:12px;")
+        left.addWidget(hint)
         self._list = QListWidget(self)
         self._list.setMinimumWidth(280)
         self._list.itemDoubleClicked.connect(self._on_double)
@@ -193,6 +199,8 @@ class GameWindow(QMainWindow):
         self._suppress_open_show_event = False
 
         self.setWindowTitle("联机五子棋 ♟")
+        self.resize(760, 720)
+        self.setMinimumSize(700, 680)
         self._build_ui()
         self._sync_lock()
 
@@ -201,14 +209,20 @@ class GameWindow(QMainWindow):
     def _build_ui(self) -> None:
         central = QWidget(self)
         root = QVBoxLayout(central)
-        root.setContentsMargins(12, 10, 12, 10)
+        root.setContentsMargins(24, 20, 24, 20)
         root.setSpacing(8)
 
         bar = QHBoxLayout()
         bar.setSpacing(8)
-        title = QLabel("♟ 联机五子棋", self)
-        title.setStyleSheet("font-size:18px; font-weight:600; color:#e65a7a;")
-        bar.addWidget(title)
+        heading = QVBoxLayout()
+        heading.setSpacing(2)
+        title = QLabel("联机五子棋", self)
+        title.setStyleSheet("font-size:24px; font-weight:700; color:#263238;")
+        subtitle = QLabel("邀请对方开始一局，或先在本地熟悉棋盘", self)
+        subtitle.setStyleSheet("color:#7b8794; font-size:13px;")
+        heading.addWidget(title)
+        heading.addWidget(subtitle)
+        bar.addLayout(heading)
         bar.addStretch(1)
 
         self._invite_btn = QPushButton("📨 邀请对方", self)
@@ -217,11 +231,11 @@ class GameWindow(QMainWindow):
         self._history_btn = QPushButton("📜 对局历史", self)
         for b in (self._invite_btn, self._undo_btn, self._restart_btn, self._history_btn):
             b.setStyleSheet(
-                "QPushButton{background:#fdf2f5;color:#e65a7a;"
-                "border:1px solid #e65a7a;border-radius:8px;padding:6px 14px;"
+                "QPushButton{background:#ffffff;color:#d84f68;"
+                "border:1px solid #e8a0ad;border-radius:6px;padding:8px 14px;"
                 "font-size:13px;}"
-                "QPushButton:hover{background:#fce4ea;}"
-                "QPushButton:disabled{background:#f5f5f5;color:#aaa;border-color:#ddd;}"
+                "QPushButton:hover{background:#fff0f3;}"
+                "QPushButton:disabled{background:#edf0f3;color:#aab3bd;border-color:#e1e5ea;}"
             )
             bar.addWidget(b)
         self._invite_btn.clicked.connect(self.start_invite)

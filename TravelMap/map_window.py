@@ -32,8 +32,8 @@ from . import city_picker
 from . import store
 from .china_map_widget import ChinaMapWidget
 
-PINK = "#e65a7a"
-CARD_BG = "#fdf2f5"
+PINK = "#e85d75"
+CARD_BG = "#fff0f3"
 
 
 def _resolve_travel_photo(image_path: str) -> str:
@@ -112,7 +112,8 @@ class _EditCityDialog(QDialog):
                  default_type: str = "visited") -> None:
         super().__init__(parent)
         self.setWindowTitle("城市详情 ✏")
-        self.resize(380, 440)
+        self.resize(420, 500)
+        self.setMinimumSize(380, 460)
         self._city = city or {}
         self._image_path = self._city.get("image_path", "")
         self._build_ui(default_type)
@@ -124,7 +125,7 @@ class _EditCityDialog(QDialog):
 
         name = self._city.get("name") or self._city.get("city_name", "")
         title = QLabel(f"✏ {name}" if name else "➕ 添加城市", self)
-        title.setStyleSheet(f"font-size:18px; font-weight:600; color:{PINK};")
+        title.setStyleSheet("font-size:20px; font-weight:700; color:#263238;")
         layout.addWidget(title)
 
         # 日期
@@ -133,7 +134,8 @@ class _EditCityDialog(QDialog):
         self.date_edit.setDisplayFormat("yyyy-MM-dd")
         self.date_edit.setCalendarPopup(True)
         self.date_edit.setStyleSheet(
-            "QDateEdit{padding:6px;border:1px solid #ddd;border-radius:6px;font-size:14px;}"
+            "QDateEdit{padding:6px 9px;border:1px solid #d7dee8;"
+            "border-radius:6px;font-size:14px;background:#ffffff;}"
         )
         d = self._city.get("date", "")
         if d:
@@ -151,7 +153,8 @@ class _EditCityDialog(QDialog):
         self.story_edit = QTextEdit(self)
         self.story_edit.setPlainText(self._city.get("story", ""))
         self.story_edit.setStyleSheet(
-            "QTextEdit{border:1px solid #ddd;border-radius:6px;padding:6px;font-size:14px;}"
+            "QTextEdit{border:1px solid #d7dee8;border-radius:6px;"
+            "padding:8px;font-size:14px;background:#ffffff;}"
         )
         layout.addWidget(self.story_edit)
 
@@ -177,13 +180,14 @@ class _EditCityDialog(QDialog):
         photo_row = QHBoxLayout()
         self.photo_btn = QPushButton("📷 选择照片", self)
         self.photo_btn.setStyleSheet(
-            "QPushButton{background:#eee;color:#666;border:none;border-radius:6px;padding:8px 12px;}"
-            "QPushButton:hover{background:#ddd;}"
+            "QPushButton{background:#ffffff;color:#52616d;border:1px solid #d7dee8;"
+            "border-radius:6px;padding:8px 12px;}"
+            "QPushButton:hover{background:#f0f3f7;}"
         )
         self.photo_path_label = QLabel(
             _resolve_travel_photo(self._image_path) or "未选择", self
         )
-        self.photo_path_label.setStyleSheet("color:#999;font-size:12px;")
+        self.photo_path_label.setStyleSheet("color:#7b8794;font-size:12px;")
         self.photo_path_label.setMinimumWidth(120)
         self.photo_btn.clicked.connect(self._pick_photo)
         photo_row.addWidget(self.photo_btn)
@@ -195,13 +199,15 @@ class _EditCityDialog(QDialog):
         btn_row = QHBoxLayout()
         cancel_btn = QPushButton("取消", self)
         cancel_btn.setStyleSheet(
-            "QPushButton{background:#eee;color:#666;border:none;border-radius:6px;padding:8px 16px;}"
-            "QPushButton:hover{background:#ddd;}"
+            "QPushButton{background:#ffffff;color:#52616d;border:1px solid #d7dee8;"
+            "border-radius:6px;padding:8px 16px;}"
+            "QPushButton:hover{background:#f0f3f7;}"
         )
         ok_btn = QPushButton("保存", self)
         ok_btn.setStyleSheet(
-            f"QPushButton{{background:{PINK};color:#fff;border:none;border-radius:6px;padding:8px 16px;}}"
-            f"QPushButton:hover{{background:#d94a6a;}}"
+            f"QPushButton{{background:{PINK};color:#fff;border:none;border-radius:6px;"
+            f"padding:8px 16px;font-weight:600;}}"
+            f"QPushButton:hover{{background:#d94f68;}}"
         )
         cancel_btn.clicked.connect(self.reject)
         ok_btn.clicked.connect(self.accept)
@@ -241,7 +247,8 @@ class _DetailDialog(QDialog):
     def __init__(self, parent, city: dict, on_edit=None, on_delete=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("城市详情 📍")
-        self.resize(360, 480)
+        self.resize(400, 520)
+        self.setMinimumSize(360, 460)
         self._on_edit = on_edit
         self._on_delete = on_delete
         self._build_ui(city)
@@ -252,13 +259,13 @@ class _DetailDialog(QDialog):
         layout.setSpacing(10)
 
         title = QLabel(f"📍 {city.get('city_name', '')}", self)
-        title.setStyleSheet(f"font-size:20px; font-weight:600; color:{PINK};")
+        title.setStyleSheet("font-size:22px; font-weight:700; color:#263238;")
         layout.addWidget(title)
 
         ctype = city.get("type", "visited")
         type_text = "✨ 愿望清单" if ctype == "wish" else "🌸 已去过"
         type_label = QLabel(type_text, self)
-        type_label.setStyleSheet("color:#888;font-size:13px;")
+        type_label.setStyleSheet("color:#7b8794;font-size:13px;")
         layout.addWidget(type_label)
 
         date_str = city.get("date", "")
@@ -278,12 +285,13 @@ class _DetailDialog(QDialog):
         story = city.get("story", "")
         if story:
             story_label = QLabel("💭 我们的故事：", self)
-            story_label.setStyleSheet("color:#888;font-size:13px;")
+            story_label.setStyleSheet("color:#7b8794;font-size:13px;")
             layout.addWidget(story_label)
             story_text = QLabel(story, self)
             story_text.setWordWrap(True)
             story_text.setStyleSheet(
-                f"background:{CARD_BG};border-radius:8px;padding:10px;font-size:14px;"
+            f"background:{CARD_BG};border:1px solid #f4c5ce;border-radius:8px;"
+            f"padding:10px;font-size:14px;"
             )
             layout.addWidget(story_text)
 
@@ -293,18 +301,21 @@ class _DetailDialog(QDialog):
         btn_row = QHBoxLayout()
         edit_btn = QPushButton("编辑", self)
         edit_btn.setStyleSheet(
-            f"QPushButton{{background:{PINK};color:#fff;border:none;border-radius:6px;padding:8px 16px;}}"
-            f"QPushButton:hover{{background:#d94a6a;}}"
+            f"QPushButton{{background:{PINK};color:#fff;border:none;border-radius:6px;"
+            f"padding:8px 16px;font-weight:600;}}"
+            f"QPushButton:hover{{background:#d94f68;}}"
         )
         del_btn = QPushButton("删除", self)
         del_btn.setStyleSheet(
-            "QPushButton{background:#eee;color:#c0392b;border:none;border-radius:6px;padding:8px 16px;}"
-            "QPushButton:hover{background:#ddd;}"
+            "QPushButton{background:#fff5f5;color:#c0392b;border:1px solid #efcaca;"
+            "border-radius:6px;padding:8px 16px;}"
+            "QPushButton:hover{background:#fdeaea;}"
         )
         close_btn = QPushButton("关闭", self)
         close_btn.setStyleSheet(
-            "QPushButton{background:#eee;color:#666;border:none;border-radius:6px;padding:8px 16px;}"
-            "QPushButton:hover{background:#ddd;}"
+            "QPushButton{background:#ffffff;color:#52616d;border:1px solid #d7dee8;"
+            "border-radius:6px;padding:8px 16px;}"
+            "QPushButton:hover{background:#f0f3f7;}"
         )
         edit_btn.clicked.connect(self._do_edit)
         del_btn.clicked.connect(self._do_delete)
@@ -333,7 +344,8 @@ class TravelMapWindow(QMainWindow):
         super().__init__()
         self._hub = hub
         self.setWindowTitle("旅行地图 🗺")
-        self.resize(1000, 750)
+        self.resize(1080, 800)
+        self.setMinimumSize(980, 700)
         self._default_type = "visited"
         self._route_cities: list[dict] = []
         self._route_index = 0
@@ -351,8 +363,18 @@ class TravelMapWindow(QMainWindow):
         central = QWidget(self)
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
-        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setContentsMargins(24, 20, 24, 20)
         layout.setSpacing(10)
+
+        header = QVBoxLayout()
+        header.setSpacing(2)
+        title = QLabel("旅行地图", self)
+        title.setStyleSheet("font-size:24px; font-weight:700; color:#263238;")
+        subtitle = QLabel("把去过的地方和下一站愿望，放在同一张地图上", self)
+        subtitle.setStyleSheet("color:#7b8794; font-size:13px;")
+        header.addWidget(title)
+        header.addWidget(subtitle)
+        layout.addLayout(header)
 
         # 地图展示区：离线 QPainter 中国地图（支持缩放/拖动/标记点击）
         self.map_widget = ChinaMapWidget(self)
@@ -365,7 +387,7 @@ class TravelMapWindow(QMainWindow):
         # 统计 + 操作按钮
         top_bar = QHBoxLayout()
         self.stats_label = QLabel("已解锁 0 个城市 🏆", self)
-        self.stats_label.setStyleSheet(f"font-size:15px; font-weight:600; color:{PINK};")
+        self.stats_label.setStyleSheet("font-size:15px; font-weight:700; color:#52616d;")
         top_bar.addWidget(self.stats_label)
         top_bar.addStretch(1)
 
@@ -374,8 +396,8 @@ class TravelMapWindow(QMainWindow):
         self.switch_btn = QPushButton("🔄 切换愿望/已去", self)
         btn_style = (
             f"QPushButton{{background:{PINK};color:#fff;border:none;"
-            f"border-radius:8px;padding:8px 14px;font-size:13px;}}"
-            f"QPushButton:hover{{background:#d94a6a;}}"
+            f"border-radius:6px;padding:9px 14px;font-size:13px;font-weight:600;}}"
+            f"QPushButton:hover{{background:#d94f68;}}"
         )
         for btn in (self.add_btn, self.play_btn, self.switch_btn):
             btn.setStyleSheet(btn_style)
@@ -391,9 +413,10 @@ class TravelMapWindow(QMainWindow):
         self.city_list = QListWidget(self)
         self.city_list.setMaximumHeight(140)
         self.city_list.setStyleSheet(
-            "QListWidget{border:1px solid #eee;border-radius:8px;font-size:13px;}"
-            "QListWidget::item{padding:6px;}"
-            "QListWidget::item:selected{background:#fdf2f5;color:#e65a7a;}"
+            "QListWidget{border:1px solid #dfe5ec;border-radius:8px;"
+            "font-size:13px;background:#ffffff;}"
+            "QListWidget::item{padding:7px;}"
+            "QListWidget::item:selected{background:#ffe8ed;color:#d84f68;}"
         )
         self.city_list.itemClicked.connect(self._on_city_clicked)
         layout.addWidget(self.city_list)
