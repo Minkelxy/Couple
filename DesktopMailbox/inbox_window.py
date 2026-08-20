@@ -31,7 +31,8 @@ class InboxWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("信件箱 📬")
-        self.resize(820, 560)
+        self.resize(900, 620)
+        self.setMinimumSize(760, 520)
         self._mode = "inbox"  # inbox | drafts
         self._build_ui()
 
@@ -39,7 +40,18 @@ class InboxWindow(QMainWindow):
         central = QWidget(self)
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
-        root.setContentsMargins(12, 12, 12, 12)
+        root.setContentsMargins(24, 20, 24, 20)
+        root.setSpacing(10)
+
+        header = QVBoxLayout()
+        header.setSpacing(2)
+        title = QLabel("信件箱", self)
+        title.setStyleSheet("font-size:24px; font-weight:700; color:#263238;")
+        subtitle = QLabel("把想说的话留在这里，按自己的节奏打开", self)
+        subtitle.setStyleSheet("color:#7b8794; font-size:13px;")
+        header.addWidget(title)
+        header.addWidget(subtitle)
+        root.addLayout(header)
 
         # 顶部：视图切换 + 状态 + 刷新
         top = QHBoxLayout()
@@ -49,7 +61,7 @@ class InboxWindow(QMainWindow):
         self._view_switch.currentIndexChanged.connect(self._on_view_changed)
         top.addWidget(self._view_switch)
         self._status = QLabel("加载中…", self)
-        self._status.setStyleSheet("color:#666;")
+        self._status.setStyleSheet("color:#7b8794; font-size:13px;")
         top.addWidget(self._status, 1)
         refresh = QPushButton("🔄 刷新", self)
         refresh.clicked.connect(self.refresh)
@@ -64,6 +76,10 @@ class InboxWindow(QMainWindow):
         self._preview = QTextBrowser(self)
         self._preview.setOpenExternalLinks(True)
         self._preview.setMinimumWidth(420)
+        self._preview.setStyleSheet(
+            "QTextBrowser{background:#ffffff;border:1px solid #dfe5ec;"
+            "border-radius:8px;padding:10px;}"
+        )
         splitter.addWidget(self._list)
         splitter.addWidget(self._preview)
         splitter.setStretchFactor(0, 1)
@@ -78,6 +94,12 @@ class InboxWindow(QMainWindow):
         self._del_btn = QPushButton("🗑 删除", self)
         self._del_btn.setEnabled(False)
         self._del_btn.clicked.connect(self._delete_current)
+        self._open_btn.setStyleSheet(
+            "QPushButton{background:#e85d75;color:#fff;border:none;"
+            "border-radius:6px;padding:9px 16px;font-weight:600;}"
+            "QPushButton:hover{background:#d94f68;}"
+        )
+        self._del_btn.setStyleSheet("padding:9px 16px;")
         bottom.addStretch(1)
         bottom.addWidget(self._open_btn)
         bottom.addWidget(self._del_btn)

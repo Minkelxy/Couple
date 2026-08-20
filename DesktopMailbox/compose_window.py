@@ -37,7 +37,8 @@ class ComposeWindow(QMainWindow):
     def __init__(self, sync_hub=None) -> None:
         super().__init__()
         self.setWindowTitle("写一封信 ✉")
-        self.resize(560, 620)
+        self.resize(600, 680)
+        self.setMinimumSize(540, 600)
         self._attachment_bytes: bytes | None = None
         self._attachment_ext: str = ""
         self._sync = sync_hub
@@ -76,8 +77,18 @@ class ComposeWindow(QMainWindow):
         central = QWidget(self)
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
-        root.setContentsMargins(18, 18, 18, 18)
-        root.setSpacing(10)
+        root.setContentsMargins(28, 22, 28, 22)
+        root.setSpacing(12)
+
+        header = QVBoxLayout()
+        header.setSpacing(2)
+        heading = QLabel("写一封信", self)
+        heading.setStyleSheet("font-size:24px; font-weight:700; color:#263238;")
+        hint = QLabel("写下此刻的心情，选择合适的时间送达", self)
+        hint.setStyleSheet("color:#7b8794; font-size:13px;")
+        header.addWidget(heading)
+        header.addWidget(hint)
+        root.addLayout(header)
 
         # 角色行：我 → 你
         role_row = QHBoxLayout()
@@ -97,11 +108,18 @@ class ComposeWindow(QMainWindow):
         # 标题
         self._title = QLineEdit(self)
         self._title.setPlaceholderText("给这封信起个标题…")
+        self._title.setMinimumHeight(40)
         root.addWidget(self._title)
 
         # 正文
         self._body = QTextEdit(self)
         self._body.setPlaceholderText("写点什么吧，时间到了对方才会看到…")
+        self._body.setMinimumHeight(260)
+        self._body.setStyleSheet(
+            "QTextEdit{background:#ffffff;border:1px solid #dfe5ec;"
+            "border-radius:8px;padding:10px;font-size:15px;}"
+            "QTextEdit:focus{border:1px solid #e85d75;}"
+        )
         root.addWidget(self._body, 1)
 
         # 附件
@@ -109,7 +127,7 @@ class ComposeWindow(QMainWindow):
         self._att_btn = QPushButton("📎 添加图片", self)
         self._att_btn.clicked.connect(self._pick_attachment)
         self._att_label = QLabel("未选择附件", self)
-        self._att_label.setStyleSheet("color:#888;")
+        self._att_label.setStyleSheet("color:#7b8794; font-size:13px;")
         self._clear_att = QPushButton("移除", self)
         self._clear_att.clicked.connect(self._clear_attachment)
         self._clear_att.setVisible(False)
@@ -141,9 +159,9 @@ class ComposeWindow(QMainWindow):
         # 寄出按钮
         self._send_btn = QPushButton("💌 寄出", self)
         self._send_btn.setStyleSheet(
-            "QPushButton{background:#e65a7a;color:#fff;border:none;"
-            "border-radius:8px;padding:12px;font-size:15px;}"
-            "QPushButton:hover{background:#d94a6a;}"
+            "QPushButton{background:#e85d75;color:#fff;border:none;"
+            "border-radius:6px;padding:12px;font-size:15px;font-weight:600;}"
+            "QPushButton:hover{background:#d94f68;}"
         )
         self._send_btn.setToolTip("寄出信件（Ctrl+Enter）")
         self._send_btn.clicked.connect(self._on_send)
