@@ -1,4 +1,4 @@
-"""年度观影报告生成：用 Pillow 绘制粉色渐变长图。
+"""年度观影报告生成：用 Pillow 绘制轻量长图。
 
 内容含：已看数量、评分最高影片、类型分布（文字列表）、双人评分差异最大影片。
 中文字体优先加载 Windows 自带字体，失败则降级为英文，避免 PIL 默认字体乱码。
@@ -17,11 +17,11 @@ from . import store
 
 _WIDTH = 800
 _MARGIN_X = 60
-_BG_TOP = (253, 242, 245)      # #fdf2f5
-_BG_BOTTOM = (255, 228, 236)   # #ffe4ec
-_PINK = (230, 90, 122)         # #e65a7a
-_DARK = (51, 51, 51)
-_GRAY = (136, 136, 136)
+_BG_TOP = (245, 247, 250)      # #f5f7fa
+_BG_BOTTOM = (255, 255, 255)   # #ffffff
+_PINK = (232, 93, 117)         # #e85d75
+_DARK = (38, 50, 56)            # #263238
+_GRAY = (123, 135, 148)        # #7b8794
 
 # 常见影视类型关键词（用于从简介里解析类型分布）
 _GENRES = [
@@ -37,7 +37,7 @@ def _load_font(size: int) -> tuple[ImageFont.FreeTypeFont | ImageFont.ImageFont,
 
 
 def _gradient_bg(height: int) -> Image.Image:
-    """生成竖向粉色渐变背景图（800 x height）。"""
+    """生成竖向浅灰白背景图（800 x height）。"""
     height = max(height, 320)
     col = Image.new("RGB", (1, height), _BG_TOP)
     px = col.load()
