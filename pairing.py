@@ -122,6 +122,8 @@ class PairingSession:
         self._token: str | None = None
         self._nonce_host: str | None = None
         self._nonce_guest: str | None = None
+        self._confirm_lock = threading.Lock()
+        self._confirm_started = False
 
     # ---------- 公共入口 ----------
 
@@ -154,6 +156,10 @@ class PairingSession:
     def confirm_safety(self, matched: bool) -> None:
         """用户在 UI 上点了"对方报的数字和我屏幕一样（是/否）"。"""
         if matched:
+            with self._confirm_lock:
+                if self._confirm_started:
+                    return
+                self._confirm_started = True
             self._thread = threading.Thread(target=self._confirm_loop, daemon=True)
             self._thread.start()
         else:

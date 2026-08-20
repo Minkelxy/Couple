@@ -1,7 +1,7 @@
 import json
 import threading
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pairing
 
@@ -86,6 +86,20 @@ class PairingTransportTests(unittest.TestCase):
         self.assertEqual(nonce, "nonce-1")
         self.assertEqual(session._nonce_host, "nonce-1")
         self.assertEqual(post.call_count, 2)
+
+    def test_confirm_safety_starts_only_one_worker(self):
+        session = pairing.PairingSession(
+            "https://relay.invalid", "A", lambda _p: None
+        )
+        worker = Mock()
+        with patch.object(
+            pairing.threading, "Thread", return_value=worker
+        ) as thread:
+            session.confirm_safety(True)
+            session.confirm_safety(True)
+
+        thread.assert_called_once_with(target=session._confirm_loop, daemon=True)
+        worker.start.assert_called_once_with()
 
 
 if __name__ == "__main__":
