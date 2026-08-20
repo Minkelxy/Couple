@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem, QPushButton, QLabel,
 )
 
-PINK = "#e65a7a"
+PINK = "#e85d75"
 
 # 中国主要城市列表（含经纬度，大致真实坐标）
 CHINA_CITIES: list[dict] = [
@@ -63,29 +63,35 @@ def pick_city_dialog(parent=None) -> dict | None:
     """
     dlg = QDialog(parent)
     dlg.setWindowTitle("选择城市 🏙")
-    dlg.resize(320, 460)
+    dlg.resize(360, 520)
+    dlg.setMinimumSize(320, 460)
 
     layout = QVBoxLayout(dlg)
     layout.setContentsMargins(18, 16, 18, 16)
     layout.setSpacing(10)
 
-    title = QLabel("选择一个城市 ✈", dlg)
-    title.setStyleSheet(f"font-size:16px; font-weight:600; color:{PINK};")
+    title = QLabel("选择一个城市", dlg)
+    title.setStyleSheet("font-size:20px; font-weight:700; color:#263238;")
     layout.addWidget(title)
+    hint = QLabel("搜索后选择城市，下一步可以补充日期和故事", dlg)
+    hint.setStyleSheet("color:#7b8794; font-size:13px;")
+    layout.addWidget(hint)
 
     search = QLineEdit(dlg)
     search.setPlaceholderText("搜索城市名…")
     search.setStyleSheet(
-        "QLineEdit{padding:8px;border:1px solid #ddd;border-radius:6px;font-size:14px;}"
-        "QLineEdit:focus{border:1px solid #e65a7a;}"
+        "QLineEdit{padding:8px 10px;border:1px solid #d7dee8;"
+        "border-radius:6px;font-size:14px;background:#ffffff;}"
+        "QLineEdit:focus{border:1px solid #e85d75;}"
     )
     layout.addWidget(search)
 
     list_widget = QListWidget(dlg)
     list_widget.setStyleSheet(
-        "QListWidget{border:1px solid #eee;border-radius:6px;font-size:14px;}"
-        "QListWidget::item{padding:8px;}"
-        "QListWidget::item:selected{background:#fdf2f5;color:#e65a7a;}"
+        "QListWidget{border:1px solid #dfe5ec;border-radius:7px;"
+        "font-size:14px;background:#ffffff;}"
+        "QListWidget::item{padding:9px;}"
+        "QListWidget::item:selected{background:#ffe8ed;color:#d84f68;}"
     )
     layout.addWidget(list_widget)
 
@@ -108,13 +114,15 @@ def pick_city_dialog(parent=None) -> dict | None:
     btn_row = QHBoxLayout()
     cancel_btn = QPushButton("取消", dlg)
     cancel_btn.setStyleSheet(
-        "QPushButton{background:#eee;color:#666;border:none;border-radius:6px;padding:8px 16px;}"
-        "QPushButton:hover{background:#ddd;}"
+        "QPushButton{background:#ffffff;color:#52616d;border:1px solid #d7dee8;"
+        "border-radius:6px;padding:8px 16px;}"
+        "QPushButton:hover{background:#f0f3f7;}"
     )
     ok_btn = QPushButton("确定", dlg)
     ok_btn.setStyleSheet(
-        f"QPushButton{{background:{PINK};color:#fff;border:none;border-radius:6px;padding:8px 16px;}}"
-        f"QPushButton:hover{{background:#d94a6a;}}"
+        f"QPushButton{{background:{PINK};color:#fff;border:none;border-radius:6px;"
+        f"padding:8px 16px;font-weight:600;}}"
+        f"QPushButton:hover{{background:#d94f68;}}"
     )
     btn_row.addStretch(1)
     btn_row.addWidget(cancel_btn)

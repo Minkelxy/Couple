@@ -31,14 +31,14 @@ from .china_outline import (
 
 
 # 配色
-_BG_COLOR = QColor("#eaf4ff")             # 海洋浅蓝
-_LAND_COLOR = QColor("#fff8dc")            # 国土浅黄
-_LAND_OUTLINE = QColor("#c8b88a")          # 国土描边
-_PROVINCE_OUTLINE = QColor(180, 160, 130)  # 省界（深一些）
-_VISITED_COLOR = QColor("#e65a7a")         # 自己 / 已去过（粉色）
-_PARTNER_COLOR = QColor("#4a90e2")         # 对方共享（蓝色）
-_ROUTE_COLOR = QColor("#e65a7a")           # 路线粉色
-_TEXT_COLOR = QColor(60, 60, 60)
+_BG_COLOR = QColor("#eef5f7")             # 海洋浅青
+_LAND_COLOR = QColor("#f8fbfc")           # 国土浅白
+_LAND_OUTLINE = QColor("#b9c8cf")         # 国土描边
+_PROVINCE_OUTLINE = QColor(170, 187, 195)  # 省界
+_VISITED_COLOR = QColor("#e85d75")        # 自己 / 已去过（珊瑚）
+_PARTNER_COLOR = QColor("#4d7ea8")        # 对方共享（蓝色）
+_ROUTE_COLOR = QColor("#e85d75")          # 路线珊瑚
+_TEXT_COLOR = QColor(38, 50, 56)
 
 
 class ChinaMapWidget(QWidget):
