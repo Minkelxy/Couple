@@ -63,22 +63,25 @@ python relay_server.py                         # 开发
 COUPLE_RELAY_DB=/srv/couple/letters.db gunicorn --workers 2 --bind 127.0.0.1:5000 relay_server:app
 ```
 
-Ubuntu 生产部署模板位于 `deploy/`，包括 systemd 服务、环境变量示例和 nginx 反向代理配置。推荐流程：
+Ubuntu 生产部署模板位于 `deploy/`，包括 systemd 服务、清理/备份定时器、环境变量示例和 nginx 反向代理配置。Gunicorn worker 不会启动清理线程，过期数据由独立 timer 串行清理。推荐流程：
 
 ```bash
 sudo useradd --system --home /opt/couple-relay --shell /usr/sbin/nologin couple-relay
 sudo install -d -o couple-relay -g couple-relay /opt/couple-relay /var/lib/couple-relay
-sudo cp relay_server.py relay_backup.py relay-requirements.txt /opt/couple-relay/
+sudo cp relay_server.py relay_cleanup.py relay_backup.py relay-requirements.txt /opt/couple-relay/
 sudo python3 -m venv /opt/couple-relay/.venv
 sudo /opt/couple-relay/.venv/bin/pip install -r /opt/couple-relay/relay-requirements.txt
 sudo install -d -o couple-relay -g couple-relay /var/backups/couple-relay
 sudo chown -R couple-relay:couple-relay /opt/couple-relay /var/lib/couple-relay /var/backups/couple-relay
 sudo install -m 0644 deploy/couple-relay.service /etc/systemd/system/couple-relay.service
+sudo install -m 0644 deploy/couple-relay-cleanup.service /etc/systemd/system/couple-relay-cleanup.service
+sudo install -m 0644 deploy/couple-relay-cleanup.timer /etc/systemd/system/couple-relay-cleanup.timer
 sudo install -m 0644 deploy/couple-relay-backup.service /etc/systemd/system/couple-relay-backup.service
 sudo install -m 0644 deploy/couple-relay-backup.timer /etc/systemd/system/couple-relay-backup.timer
 sudo install -m 0600 deploy/couple-relay.env.example /etc/couple-relay.env
 sudo systemctl daemon-reload
 sudo systemctl enable --now couple-relay
+sudo systemctl enable --now couple-relay-cleanup.timer
 sudo systemctl enable --now couple-relay-backup.timer
 ```
 

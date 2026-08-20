@@ -1,0 +1,11 @@
+[Unit]
+Description=Every six hours CoupleSuite relay cleanup
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=6h
+Persistent=true
+Unit=couple-relay-cleanup.service
+
+[Install]
+WantedBy=timers.target

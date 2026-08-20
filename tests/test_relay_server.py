@@ -6,6 +6,7 @@ import sqlite3
 import tempfile
 import time
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -57,6 +58,42 @@ class RelayPollingTests(unittest.TestCase):
             corrupt = client.get("/health")
         self.assertEqual(corrupt.status_code, 503)
         self.assertEqual(corrupt.get_json()["db"], "corrupt")
+
+    def test_cleanup_once_removes_only_expired_letters(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_db_path = relay_server._DB_PATH
+            relay_server._DB_PATH = Path(tmp) / "letters.db"
+            try:
+                relay_server._init_db()
+                old = (datetime.now(timezone.utc) - timedelta(days=31)).replace(
+                    tzinfo=None
+                ).isoformat(timespec="microseconds")
+                current = datetime.now(timezone.utc).replace(tzinfo=None).isoformat(
+                    timespec="microseconds"
+                )
+                with relay_server._db_session() as conn:
+                    for created_at in (old, current):
+                        conn.execute(
+                            "INSERT INTO letters(pair_code, message_id, meta, "
+                            "content_b64, attach_b64, attach_ext, created_at) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            ("cleanup-test", None, "{}", "", "", "", created_at),
+                        )
+                    conn.commit()
+
+                deleted = relay_server.cleanup_once(
+                    now=datetime.now(timezone.utc).replace(tzinfo=None)
+                )
+
+                self.assertEqual(deleted, 1)
+                with relay_server._db_session() as conn:
+                    rows = conn.execute(
+                        "SELECT created_at FROM letters ORDER BY id"
+                    ).fetchall()
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(rows[0]["created_at"], current)
+            finally:
+                relay_server._DB_PATH = original_db_path
 
     def test_index_does_not_expose_database_statistics(self):
         response = relay_server.app.test_client().get("/")

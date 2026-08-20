@@ -1,0 +1,17 @@
+[Unit]
+Description=Clean expired CoupleSuite relay data
+After=couple-relay.service
+
+[Service]
+Type=oneshot
+User=couple-relay
+Group=couple-relay
+UMask=0077
+WorkingDirectory=/opt/couple-relay
+EnvironmentFile=/etc/couple-relay.env
+ExecStart=/opt/couple-relay/.venv/bin/python /opt/couple-relay/relay_cleanup.py
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/couple-relay
+NoNewPrivileges=true

@@ -22,7 +22,7 @@
   - 配对态：SQLite pairing_sessions/pairing_members（TTL 10 分钟自动清）
   - 通道成员：SQLite channels 表（永久保留，已配对的双方永远能认出彼此）
 
-清理：后台线程每 6 小时清理 30 天以上的信件（分批）。
+清理：生产环境由 systemd timer 每 6 小时清理 30 天以上的信件（分批）；直接运行脚本时保留后台线程。
 
 运行：
   开发：python relay_server.py
@@ -950,38 +950,46 @@ def api_poll() -> tuple:
     return jsonify(result), 200
 
 
-# ---------- 清理线程 ----------
+# ---------- 数据清理 ----------
+
+def cleanup_once(now: datetime | None = None) -> int:
+    """Remove expired letters and pairing state once.
+
+    Gunicorn imports this module once per worker, so cleanup is deliberately
+    callable instead of being started during module import.
+    """
+    current = now or datetime.now(timezone.utc).replace(tzinfo=None)
+    cutoff = (current - timedelta(days=_RETENTION_DAYS)).isoformat(
+        timespec="microseconds"
+    )
+    deleted = 0
+    with _LOCK, _db_session() as conn:
+        while True:
+            cur = conn.execute(
+                "DELETE FROM letters WHERE id IN ("
+                "  SELECT id FROM letters WHERE created_at < ? LIMIT 500"
+                ")",
+                (cutoff,),
+            )
+            conn.commit()
+            if cur.rowcount <= 0:
+                break
+            deleted += cur.rowcount
+    with _PAIRING_LOCK:
+        _pairing_expire_locked()
+    return deleted
+
 
 def _cleanup_loop() -> None:
     while True:
         time.sleep(_CLEANUP_INTERVAL_SEC)
-        # 1. 信件：30 天过期
-        cutoff = (datetime.utcnow() - timedelta(days=_RETENTION_DAYS)).isoformat(timespec="microseconds")
         try:
-            with _LOCK, _db_session() as conn:
-                deleted = 0
-                while True:
-                    cur = conn.execute(
-                        "DELETE FROM letters WHERE id IN ("
-                        "  SELECT id FROM letters WHERE created_at < ? LIMIT 500"
-                        ")",
-                        (cutoff,),
-                    )
-                    conn.commit()
-                    if cur.rowcount <= 0:
-                        break
-                    deleted += cur.rowcount
-                if deleted:
-                    print(f"[cleanup] removed {deleted} letters before {cutoff}", flush=True)
+            deleted = cleanup_once()
+            if deleted:
+                print(f"[cleanup] removed {deleted} expired letters", flush=True)
         except Exception:
             import traceback
             traceback.print_exc()
-        # 2. 配对态：10 分钟
-        try:
-            with _PAIRING_LOCK:
-                _pairing_expire_locked()
-        except Exception:
-            pass
 
 
 # ---------- 工具 ----------
@@ -1032,10 +1040,10 @@ def _stored_letter_is_valid(row, channel_id: str | None = None) -> bool:
 # ---------- 启动 ----------
 
 _init_db()
-threading.Thread(target=_cleanup_loop, daemon=True).start()
 
 
 if __name__ == "__main__":
+    threading.Thread(target=_cleanup_loop, daemon=True).start()
     print("中转服务器启动: http://127.0.0.1:5000")
     print("健康检查: http://127.0.0.1:5000/health")
     print("公钥身份通道说明：先 /api/pairing/declare→poll→confirm 配对，"
