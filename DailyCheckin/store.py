@@ -5,7 +5,7 @@ import sqlite3
 from datetime import date, datetime, timedelta
 
 import app_paths
-from common_utils import AtomicJsonStore
+from common_utils import AtomicJsonStore, log_warning
 
 DB_PATH = app_paths.CHECKIN_DIR / "checkin.db"
 IMAGES_DIR = app_paths.CHECKIN_DIR / "images"
@@ -123,6 +123,19 @@ def _save_partner(data: dict) -> None:
 def add_partner_record(date_str: str, mood: int, note: str,
                        image_path: str = "") -> None:
     """新增/更新对方指定日期的打卡记录。"""
+    if not isinstance(date_str, str):
+        return
+    try:
+        if date.fromisoformat(date_str).isoformat() != date_str:
+            raise ValueError
+    except ValueError:
+        log_warning("忽略非法对方打卡日期: %r", date_str)
+        return
+    if isinstance(mood, bool) or not isinstance(mood, int) or mood not in MOOD_MAP:
+        log_warning("忽略非法对方打卡心情: %r", mood)
+        return
+    if not isinstance(note, str):
+        note = str(note)
     data = _load_partner()
     data[date_str] = {
         "date": date_str,

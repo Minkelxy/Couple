@@ -71,6 +71,24 @@ class PartnerJsonStoreTests(unittest.TestCase):
             finally:
                 checkin_store._partner_store = original_store
 
+    def test_checkin_partner_write_rejects_invalid_date_and_mood(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_store = checkin_store._partner_store
+            checkin_store._partner_store = AtomicJsonStore(
+                Path(tmp) / "partner_checkins.json", {}
+            )
+            try:
+                checkin_store.add_partner_record("2026-02-30", 5, "bad")
+                checkin_store.add_partner_record("2026-08-18", 99, "bad")
+                self.assertEqual(checkin_store._load_partner(), {})
+
+                checkin_store.add_partner_record("2026-08-18", 5, "good")
+                self.assertEqual(
+                    checkin_store._load_partner()["2026-08-18"]["mood"], 5
+                )
+            finally:
+                checkin_store._partner_store = original_store
+
 
 if __name__ == "__main__":
     unittest.main()
