@@ -247,9 +247,16 @@ def _init_db() -> None:
                 token      TEXT PRIMARY KEY NOT NULL,
                 created_at REAL NOT NULL,
                 host       TEXT,
-                guest      TEXT
+                guest      TEXT,
+                completed_channel_id TEXT
             )
         """)
+        try:
+            conn.execute(
+                "ALTER TABLE pairing_sessions ADD COLUMN completed_channel_id TEXT"
+            )
+        except sqlite3.OperationalError:
+            pass
         conn.execute("""
             CREATE TABLE IF NOT EXISTS pairing_members (
                 token      TEXT NOT NULL,
@@ -420,6 +427,17 @@ def _delete_pairing(token: str) -> None:
         conn.commit()
 
 
+def _complete_pairing(token: str, channel_id: str) -> None:
+    """Keep a short-lived completion marker so both clients can finish idempotently."""
+    with _db_session() as conn:
+        conn.execute(
+            "UPDATE pairing_sessions SET completed_channel_id = ? WHERE token = ?",
+            (channel_id, token),
+        )
+        conn.execute("DELETE FROM pairing_members WHERE token = ?", (token,))
+        conn.commit()
+
+
 def _declare_pairing(token: str, role: str, pk_b64: str, nickname: str) -> tuple[str | None, bool]:
     """Atomically claim one role; return (nonce, conflict)."""
     now = time.time()
@@ -498,6 +516,17 @@ def api_pairing_poll() -> tuple:
         _pairing_expire_locked()
         state = _load_pairing(token)
         if state is None or state.get(role) is None:
+            with _db_session() as conn:
+                completed = conn.execute(
+                    "SELECT completed_channel_id FROM pairing_sessions WHERE token = ?",
+                    (token,),
+                ).fetchone()
+            if completed and completed["completed_channel_id"]:
+                return jsonify({
+                    "ok": True,
+                    "both_confirmed": True,
+                    "channel_id": completed["completed_channel_id"],
+                }), 200
             return jsonify({"ok": False, "message": "配对记录不存在（可能已过期）", "fatal": True}), 410
         partner_role = "guest" if role == "host" else "host"
         partner = state.get(partner_role)
@@ -523,7 +552,7 @@ def api_pairing_poll() -> tuple:
             concat = a_bytes + b_bytes if a_bytes <= b_bytes else b_bytes + a_bytes
             channel_id = hashlib.sha256(concat).hexdigest()[:24]
             _save_channel(channel_id, a_pk, b_pk)
-            _delete_pairing(token)
+            _complete_pairing(token, channel_id)
             return jsonify({
                 "ok": True,
                 "both_confirmed": True,

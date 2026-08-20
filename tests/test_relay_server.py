@@ -238,6 +238,12 @@ class RelayPollingTests(unittest.TestCase):
                         + max(host_key.public_key().public_bytes_raw(), guest_key.public_key().public_bytes_raw())
                     ).hexdigest()[:24],
                 )
+                repeated = client.get(
+                    "/api/pairing/poll",
+                    query_string={"token": token, "role": "guest", "step": "both_confirmed"},
+                )
+                self.assertEqual(repeated.status_code, 200)
+                self.assertEqual(repeated.get_json()["channel_id"], payload["channel_id"])
             finally:
                 relay_server._DB_PATH = original_db_path
                 relay_server.app.config["ALLOW_LEGACY_PAIR_CODE"] = original_legacy
