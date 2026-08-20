@@ -503,7 +503,7 @@ class SyncHub(QObject):
             return
         try:
             deliver_at = datetime.fromisoformat(meta["deliver_at"])
-        except (KeyError, ValueError):
+        except (KeyError, TypeError, ValueError):
             deliver_at = datetime.now()
         new_meta = letter_store.write_letter(
             author=meta.get("author", "?"),

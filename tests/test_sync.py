@@ -84,6 +84,30 @@ class SyncTransportTests(unittest.TestCase):
 
         hub.event_received.emit.assert_not_called()
 
+    def test_on_received_recovers_from_non_string_delivery_time(self):
+        hub = SimpleNamespace(
+            _my_id="local-id",
+            letter_received=Mock(),
+        )
+        with patch.object(
+            identity,
+            "get_status",
+            return_value=SimpleNamespace(paired=False),
+        ), patch(
+            "DesktopMailbox.sync.letter_store.write_letter",
+            return_value={"id": "letter-1"},
+        ) as write_letter:
+            SyncHub.on_received(
+                hub,
+                {"type": "letter", "deliver_at": None},
+                "hello",
+                b"",
+                "",
+            )
+
+        write_letter.assert_called_once()
+        hub.letter_received.emit.assert_called_once_with("letter-1")
+
     def test_cloud_cursor_is_persisted_atomically(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = AtomicJsonStore(Path(tmp) / "cursor.json", {})
