@@ -313,24 +313,40 @@ class SyncTransportTests(unittest.TestCase):
             _my_id="local-id",
             _stopped=False,
             _cloud_client=SimpleNamespace(
-                poll_letters=Mock(return_value=(
-                    [{
+                poll_letters=Mock(side_effect=[
+                    ([{
                         "meta": {
                             "type": "checkin",
                             "message_id": "checkin-retry",
+                            "sig_b64": "sig-retry",
                             "date": "2026-02-20",
                             "mood": 5,
                         },
                         "content": "",
                         "attachment": b"",
                         "attachment_ext": "",
-                    }],
-                    "new-cursor",
-                )),
+                    }], "new-cursor"),
+                    ([{
+                        "meta": {
+                            "type": "checkin",
+                            "message_id": "checkin-retry",
+                            "sig_b64": "sig-retry",
+                            "date": "2026-02-20",
+                            "mood": 5,
+                        },
+                        "content": "",
+                        "attachment": b"",
+                        "attachment_ext": "",
+                    }], "new-cursor"),
+                ]),
             ),
             _cloud_last_ts="old-cursor",
             _save_cursor=Mock(),
             _cloud_schedule_poll=Mock(),
+            _flush_cloud_outbox=Mock(),
+            _sig_lock=threading.Lock(),
+            _seen_sigs=collections.OrderedDict(),
+            _sig_lru_max=16,
             _message_seen_store=Mock(),
             _message_seen_lock=threading.Lock(),
             _seen_message_ids=collections.OrderedDict(),
@@ -344,20 +360,23 @@ class SyncTransportTests(unittest.TestCase):
         hub._persist_message_ids = MethodType(SyncHub._persist_message_ids, hub)
         hub._forget_message_id = MethodType(SyncHub._forget_message_id, hub)
         hub._commit_message_id = MethodType(SyncHub._commit_message_id, hub)
+        hub._check_and_record_sig = MethodType(SyncHub._check_and_record_sig, hub)
+        hub._forget_sig = MethodType(SyncHub._forget_sig, hub)
         hub.on_received = MethodType(SyncHub.on_received, hub)
 
         with patch.object(identity, "get_status", return_value=SimpleNamespace(paired=False)), \
                 patch.object(
                     checkin_window.store,
                     "add_partner_record",
-                    side_effect=OSError("disk full"),
+                    side_effect=[OSError("disk full"), None],
                 ), patch("DesktopMailbox.sync.log_exception"):
             SyncHub._cloud_poll_loop(hub)
+            SyncHub._cloud_poll_loop(hub)
 
-        self.assertEqual(hub._cloud_last_ts, "old-cursor")
-        hub._save_cursor.assert_not_called()
-        self.assertNotIn("checkin-retry", hub._seen_message_ids)
-        hub._cloud_schedule_poll.assert_called_once()
+        self.assertEqual(hub._cloud_last_ts, "new-cursor")
+        hub._save_cursor.assert_called_once()
+        self.assertIn("checkin-retry", hub._seen_message_ids)
+        self.assertEqual(hub._cloud_schedule_poll.call_count, 2)
 
     def test_paired_channel_starts_cloud_without_legacy_pair_code(self):
         from DesktopMailbox import sync as sync_module
@@ -372,7 +391,7 @@ class SyncTransportTests(unittest.TestCase):
             })
 
         cloud_client.assert_called_once_with(
-            "https://relay.example", "", sig_dedup_fn=hub._check_and_record_sig
+            "https://relay.example", ""
         )
 
     def test_recv_exact_returns_none_for_truncated_payload(self):

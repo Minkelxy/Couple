@@ -152,9 +152,8 @@ class SyncHub(QObject):
             pair_code = cfg.get("cloud_pair_code", "").strip()
             # New channel pairing does not need the legacy pair code.
             if server and (pair_code or idm.get_status().paired):
-                # 把 _check_and_record_sig 注入 CloudSyncClient，让云轮询与局域网共享同一 LRU
                 self._cloud_client = CloudSyncClient(
-                    server, pair_code, sig_dedup_fn=self._check_and_record_sig
+                    server, pair_code
                 )
 
     # ---------- 服务端 ----------
@@ -452,12 +451,18 @@ class SyncHub(QObject):
                     log_warning("云轮询游标格式非法，保留旧游标")
                     server_ts = ""
             for letter in letters:
-                self.on_received(
-                    letter.get("meta", {}),
-                    letter.get("content", ""),
-                    letter.get("attachment", b""),
-                    letter.get("attachment_ext", ""),
-                )
+                try:
+                    self.on_received(
+                        letter.get("meta", {}),
+                        letter.get("content", ""),
+                        letter.get("attachment", b""),
+                        letter.get("attachment_ext", ""),
+                    )
+                except Exception:
+                    meta = letter.get("meta", {})
+                    if isinstance(meta, dict):
+                        self._forget_sig(meta.get("sig_b64", ""))
+                    raise
             # 所有信件处理完毕后再落盘游标，保证下次轮询不会跳过本批信件；
             # 若 letters 为空但 server_ts 前进，也需保存游标。
             if server_ts:
@@ -506,6 +511,12 @@ class SyncHub(QObject):
             if len(self._seen_sigs) > self._sig_lru_max:
                 self._seen_sigs.popitem(last=False)  # 弹出最旧
             return True
+
+    def _forget_sig(self, sig_b64: str) -> None:
+        if not sig_b64:
+            return
+        with self._sig_lock:
+            self._seen_sigs.pop(sig_b64, None)
 
     def _check_and_record_message_id(self, message_id: str, persist: bool = True) -> bool:
         """Deduplicate non-letter events across LAN/cloud and client restarts."""
