@@ -24,7 +24,7 @@ DEFAULTS = {
     # 云中转同步
     "sync_mode": "lan",            # "lan" / "cloud" / "both"
     "cloud_server": "",            # 如 https://couple-relay.example.com
-    "cloud_pair_code": "",         # 配对码，双方填相同码
+    "cloud_pair_code": "",         # 旧版 pair_code，仅迁移旧客户端时使用
     "cloud_poll_interval_sec": 30, # 云轮询间隔
     # 纪念日自动投递：每年这天自动生成一封信
     # date: "MM-DD"；deliver_hour: 当天几点送达（已过则立即）

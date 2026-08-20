@@ -248,6 +248,8 @@ def main() -> int:
             old_hub.stop()
         except Exception:
             pass
+        # 同步连接和身份可能刚刚改变，旧 hub 的心跳不能继续代表当前对方状态。
+        hub_holder["last_heartbeat"] = 0.0
         hub_holder["hub"] = SyncHub(mb_config.load())
         hub_holder["hub"].start()
         new_hub = hub_holder["hub"]
