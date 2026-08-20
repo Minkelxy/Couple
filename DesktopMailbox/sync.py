@@ -462,7 +462,9 @@ class SyncHub(QObject):
             else:
                 self.send_result.emit(False, "云同步失败")
 
-    def _start_cloud_outbox_item(self, item_id: str, silent: bool = True) -> None:
+    def _start_cloud_outbox_item(
+        self, item_id: str, silent: bool = True, item: dict | None = None
+    ) -> None:
         with self._outbox_lock:
             if item_id in self._outbox_inflight:
                 return
@@ -471,7 +473,11 @@ class SyncHub(QObject):
             self._outbox_inflight.add(item_id)
         started = False
         try:
-            item = next((x for x in self._outbox.due() if x.get("id") == item_id), None)
+            if item is None:
+                item = next(
+                    (x for x in self._outbox.due() if x.get("id") == item_id),
+                    None,
+                )
             if item is None:
                 return
             try:
@@ -510,7 +516,7 @@ class SyncHub(QObject):
 
     def _flush_cloud_outbox(self) -> None:
         for item in self._outbox.due():
-            self._start_cloud_outbox_item(item["id"])
+            self._start_cloud_outbox_item(item["id"], item=item)
 
     # ---------- 云轮询 ----------
 

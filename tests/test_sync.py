@@ -8,7 +8,7 @@ import unittest
 import collections
 from types import MethodType, SimpleNamespace
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, Mock, call, patch
 
 from DesktopMailbox.sync import SyncHub, _LAN_ACK_OK, _LAN_ACK_REJECTED, _make_handler, _recv_exact
 from DailyCheckin import checkin_window
@@ -345,6 +345,24 @@ class SyncTransportTests(unittest.TestCase):
 
         thread.assert_not_called()
         self.assertNotIn(item_id, hub._outbox_inflight)
+
+    def test_flush_passes_loaded_items_without_reloading_queue(self):
+        items = [{"id": "message-1"}, {"id": "message-2"}]
+        hub = SimpleNamespace(
+            _outbox=SimpleNamespace(due=Mock(return_value=items)),
+            _start_cloud_outbox_item=Mock(),
+        )
+
+        SyncHub._flush_cloud_outbox(hub)
+
+        hub._outbox.due.assert_called_once_with()
+        self.assertEqual(
+            hub._start_cloud_outbox_item.call_args_list,
+            [
+                call("message-1", item=items[0]),
+                call("message-2", item=items[1]),
+            ],
+        )
 
     def test_oversized_outbox_attachment_is_removed_before_decode(self):
         item_id = "message-large"
