@@ -254,6 +254,26 @@ class SyncTransportTests(unittest.TestCase):
 
         self.assertNotIn(item_id, hub._outbox_inflight)
 
+    def test_outbox_does_not_start_more_than_four_cloud_sends(self):
+        item_id = "message-5"
+        hub = SimpleNamespace(
+            _outbox=SimpleNamespace(due=Mock(return_value=[{
+                "id": item_id,
+                "meta": {},
+                "content": "hello",
+                "attachment_b64": "",
+                "attachment_ext": "",
+            }])),
+            _outbox_lock=threading.Lock(),
+            _outbox_inflight={"message-1", "message-2", "message-3", "message-4"},
+        )
+
+        with patch("DesktopMailbox.sync.threading.Thread") as thread:
+            SyncHub._start_cloud_outbox_item(hub, item_id)
+
+        thread.assert_not_called()
+        self.assertNotIn(item_id, hub._outbox_inflight)
+
     def test_oversized_outbox_attachment_is_removed_before_decode(self):
         item_id = "message-large"
         hub = SimpleNamespace(

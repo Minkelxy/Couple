@@ -48,6 +48,7 @@ from .outbox import OutboxStore
 
 
 DEFAULT_PORT = 52014
+_CLOUD_OUTBOX_MAX_INFLIGHT = 4
 # 防御性上限：header JSON 不应过大；正文（文本）也需有界
 _MAX_HEADER_BYTES = 64 * 1024
 _MAX_CONTENT_BYTES = 1 * 1024 * 1024
@@ -449,6 +450,8 @@ class SyncHub(QObject):
     def _start_cloud_outbox_item(self, item_id: str, silent: bool = True) -> None:
         with self._outbox_lock:
             if item_id in self._outbox_inflight:
+                return
+            if len(self._outbox_inflight) >= _CLOUD_OUTBOX_MAX_INFLIGHT:
                 return
             self._outbox_inflight.add(item_id)
         started = False
