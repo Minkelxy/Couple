@@ -74,6 +74,17 @@ def _load_meta() -> list[dict]:
         if created_parsed.tzinfo is not None:
             created_parsed = created_parsed.astimezone().replace(tzinfo=None)
         item["created_at"] = created_parsed.isoformat(timespec="seconds")
+        for field, fallback in (
+            ("author", "?"),
+            ("recipient", "?"),
+            ("title", "(无标题)"),
+        ):
+            if not isinstance(item.get(field), str):
+                item[field] = fallback
+        if not isinstance(item.get("has_attachment"), bool):
+            item["has_attachment"] = False
+        if not isinstance(item.get("attachment_ext"), str):
+            item["attachment_ext"] = ""
         if not isinstance(item.get("read"), bool):
             item["read"] = False
         valid.append(item)
