@@ -155,6 +155,26 @@ class SyncTransportTests(unittest.TestCase):
 
         self.assertNotIn(item_id, hub._outbox_inflight)
 
+    def test_oversized_outbox_attachment_is_removed_before_decode(self):
+        item_id = "message-large"
+        hub = SimpleNamespace(
+            _outbox=SimpleNamespace(
+                due=Mock(return_value=[{
+                    "id": item_id,
+                    "meta": {},
+                    "attachment_b64": "A" * (4 * ((50 * 1024 * 1024 + 2) // 3) + 1),
+                }]),
+                remove=Mock(),
+            ),
+            _outbox_lock=threading.Lock(),
+            _outbox_inflight=set(),
+        )
+
+        SyncHub._start_cloud_outbox_item(hub, item_id)
+
+        hub._outbox.remove.assert_called_once_with(item_id)
+        self.assertNotIn(item_id, hub._outbox_inflight)
+
     def test_invalid_outbox_shape_is_removed(self):
         item_id = "message-1"
         hub = SimpleNamespace(

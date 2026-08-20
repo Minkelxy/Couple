@@ -53,6 +53,7 @@ _MAX_HEADER_BYTES = 64 * 1024
 _MAX_CONTENT_BYTES = 1 * 1024 * 1024
 _MAX_ATTACHMENT_EXT_BYTES = 32
 _MAX_EVENT_TYPE_BYTES = 64
+_MAX_ATTACHMENT_B64_LEN = 4 * ((MAX_ATTACHMENT_BYTES + 2) // 3)
 
 
 def _cursor_namespace(cfg: dict, mode: str) -> str:
@@ -394,9 +395,10 @@ class SyncHub(QObject):
             if item is None:
                 return
             try:
-                attachment = base64.b64decode(
-                    item.get("attachment_b64", ""), validate=True
-                )
+                attachment_b64 = item.get("attachment_b64", "")
+                if not isinstance(attachment_b64, str) or len(attachment_b64) > _MAX_ATTACHMENT_B64_LEN:
+                    raise ValueError("attachment too large or invalid")
+                attachment = base64.b64decode(attachment_b64, validate=True)
             except (binascii.Error, ValueError, TypeError):
                 self._outbox.remove(item_id)
                 return
@@ -406,6 +408,11 @@ class SyncHub(QObject):
             if not isinstance(meta, dict) or not isinstance(content, str) \
                     or not isinstance(att_ext, str):
                 log_warning("丢弃格式损坏的云 outbox 项: %s", item_id)
+                self._outbox.remove(item_id)
+                return
+            if len(content.encode("utf-8")) > _MAX_CONTENT_BYTES \
+                    or len(att_ext) > _MAX_ATTACHMENT_EXT_BYTES:
+                log_warning("丢弃超限的云 outbox 项: %s", item_id)
                 self._outbox.remove(item_id)
                 return
             threading.Thread(
