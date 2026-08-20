@@ -7,6 +7,29 @@ from common_utils import AtomicJsonStore
 
 
 class MailboxConfigTests(unittest.TestCase):
+    def test_load_normalizes_sync_settings_from_damaged_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_store = config._STORE
+            config._STORE = AtomicJsonStore(Path(tmp) / "mailbox.json", {})
+            try:
+                config._STORE.save({
+                    "sync_enabled": "false",
+                    "sync_mode": "invalid",
+                    "peer_host": 1920,
+                    "cloud_server": None,
+                    "cloud_pair_code": ["unexpected"],
+                })
+
+                loaded = config.load()
+
+                self.assertFalse(loaded["sync_enabled"])
+                self.assertEqual(loaded["sync_mode"], "lan")
+                self.assertEqual(loaded["peer_host"], "")
+                self.assertEqual(loaded["cloud_server"], "")
+                self.assertEqual(loaded["cloud_pair_code"], "")
+            finally:
+                config._STORE = original_store
+
     def test_load_recovers_invalid_numeric_settings(self):
         with tempfile.TemporaryDirectory() as tmp:
             original_store = config._STORE

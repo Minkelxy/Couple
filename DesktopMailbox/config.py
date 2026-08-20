@@ -56,11 +56,19 @@ def _bounded_int(value, default: int, minimum: int, maximum: int) -> int:
         return default
 
 
+def _text(value, default: str = "") -> str:
+    return value.strip() if isinstance(value, str) else default
+
+
 def load() -> dict:
     data = deepcopy(DEFAULTS)
     stored = _STORE.load()
     if isinstance(stored, dict):
         data.update(stored)
+    data["sync_enabled"] = data.get("sync_enabled") if isinstance(data.get("sync_enabled"), bool) else DEFAULTS["sync_enabled"]
+    data["sync_mode"] = data.get("sync_mode") if data.get("sync_mode") in ("lan", "cloud", "both") else DEFAULTS["sync_mode"]
+    for key in ("peer_host", "cloud_server", "cloud_pair_code"):
+        data[key] = _text(data.get(key), DEFAULTS[key])
     data["check_interval_sec"] = _bounded_int(
         data.get("check_interval_sec"), DEFAULTS["check_interval_sec"], 10, 600
     )
