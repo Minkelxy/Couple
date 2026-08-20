@@ -25,6 +25,7 @@ import socket
 import socketserver
 import struct
 import threading
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -250,6 +251,9 @@ class SyncHub(QObject):
             meta = {}
         if "sender_id" not in meta:
             meta["sender_id"] = self._my_id
+        message_id = meta.get("message_id")
+        if not isinstance(message_id, str) or not message_id:
+            meta["message_id"] = uuid.uuid4().hex
         # 新版身份：发送前给消息做 Ed25519 签名（未配对也生成签名：legacy 接收方忽略即可，未来迁移平滑）
         att = attachment or b""
         signed_meta = idm.sign_message(dict(meta), content, att, att_ext)

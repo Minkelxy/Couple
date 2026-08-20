@@ -12,6 +12,31 @@ from common_utils import AtomicJsonStore
 
 
 class SyncTransportTests(unittest.TestCase):
+    def test_send_async_assigns_message_id_for_events(self):
+        hub = SimpleNamespace(
+            _my_id="local-id",
+            _cfg={"sync_mode": "lan"},
+            _cloud_client=None,
+        )
+        with patch("DesktopMailbox.sync.idm.sign_message", side_effect=lambda meta, *_: meta) as sign_message:
+            SyncHub.send_async(hub, {"type": "checkin"}, "", b"", "", silent=True)
+
+        signed_meta = sign_message.call_args[0][0]
+        self.assertRegex(signed_meta["message_id"], r"^[0-9a-f]{32}$")
+
+    def test_send_async_preserves_existing_message_id(self):
+        hub = SimpleNamespace(
+            _my_id="local-id",
+            _cfg={"sync_mode": "lan"},
+            _cloud_client=None,
+        )
+        with patch("DesktopMailbox.sync.idm.sign_message", side_effect=lambda meta, *_: meta) as sign_message:
+            SyncHub.send_async(
+                hub, {"type": "movie", "message_id": "event-1"}, "", b"", "", silent=True
+            )
+
+        self.assertEqual(sign_message.call_args[0][0]["message_id"], "event-1")
+
     def test_stop_closes_lan_server_socket(self):
         server = Mock()
         hub = SimpleNamespace(
