@@ -58,6 +58,21 @@ class PhotoFrameConfigTests(unittest.TestCase):
             finally:
                 config._store = original_store
 
+    def test_load_falls_back_when_image_dir_is_a_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_store = config._store
+            config._store = AtomicJsonStore(Path(tmp) / "photo_frame.json", {})
+            invalid_path = Path(tmp) / "not-a-directory"
+            invalid_path.write_text("file", encoding="utf-8")
+            try:
+                config._store.save({"image_dir": str(invalid_path)})
+
+                loaded = config.load()
+
+                self.assertEqual(loaded["image_dir"], str(config.app_paths.IMAGES_DIR))
+            finally:
+                config._store = original_store
+
     def test_load_uses_atomic_store_and_recovers_invalid_values(self):
         with tempfile.TemporaryDirectory() as tmp:
             original_store = config._store

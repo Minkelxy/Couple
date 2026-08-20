@@ -194,6 +194,12 @@ def load() -> dict:
     image_dir_str = image_dir_str or str(app_paths.IMAGES_DIR)
     if not image_dir_str or image_dir_str.lower() in {"null", "none"}:
         image_dir_str = str(app_paths.IMAGES_DIR)
+    try:
+        configured_dir = Path(image_dir_str)
+        if not configured_dir.exists() or not configured_dir.is_dir():
+            image_dir_str = str(app_paths.IMAGES_DIR)
+    except (OSError, ValueError):
+        image_dir_str = str(app_paths.IMAGES_DIR)
     data["image_dir"] = image_dir_str
     return _normalize_basic_types(data)
 
