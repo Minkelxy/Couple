@@ -230,6 +230,15 @@ class SyncTransportTests(unittest.TestCase):
             server.server_close()
             thread.join(timeout=2)
 
+    def test_lan_receiver_sets_read_timeout(self):
+        handler_cls = _make_handler(SimpleNamespace(on_received=Mock()))
+        handler = handler_cls.__new__(handler_cls)
+        handler.request = Mock()
+        with patch("DesktopMailbox.sync._recv_exact", return_value=None):
+            handler.handle()
+
+        handler.request.settimeout.assert_called_once_with(30)
+
     def test_lan_receiver_rejects_processing_failure(self):
         hub = SimpleNamespace(on_received=Mock(side_effect=OSError("disk full")))
         server = socketserver.ThreadingTCPServer(

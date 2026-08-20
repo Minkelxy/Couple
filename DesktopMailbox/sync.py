@@ -56,6 +56,7 @@ _MAX_ATTACHMENT_EXT_BYTES = 32
 _MAX_EVENT_TYPE_BYTES = 64
 _MAX_ATTACHMENT_B64_LEN = 4 * ((MAX_ATTACHMENT_BYTES + 2) // 3)
 _EVENT_DISPATCH_TIMEOUT_SEC = 30
+_LAN_READ_TIMEOUT_SEC = 30
 _LAN_ACK_OK = b"\x06"
 _LAN_ACK_REJECTED = b"\x15"
 
@@ -829,6 +830,7 @@ def _make_handler(hub: SyncHub):
     class _Handler(socketserver.BaseRequestHandler):
         def handle(self) -> None:
             try:
+                self.request.settimeout(_LAN_READ_TIMEOUT_SEC)
                 hdr_len_b = _recv_exact(self.request, 4)
                 if not hdr_len_b:
                     return
