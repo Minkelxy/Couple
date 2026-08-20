@@ -67,6 +67,18 @@ def apply_theme(app: QApplication) -> None:
         }
         QToolButton:hover { background: #fff0f3; color: #d84f68; }
         QScrollArea { border: none; background: transparent; }
+        QTextBrowser {
+            border: 1px solid #dfe5ec; border-radius: 7px; background: #ffffff;
+            selection-background-color: #e85d75;
+        }
+        QAbstractItemView:focus { outline: none; border-color: #e8a0ad; }
+        QSplitter::handle:horizontal { width: 7px; background: #eef2f6; }
+        QSplitter::handle:vertical { height: 7px; background: #eef2f6; }
+        QSplitter::handle:hover { background: #f1a1af; }
+        QHeaderView::section {
+            padding: 6px 8px; border: none; border-bottom: 1px solid #dfe5ec;
+            background: #f7f9fb; color: #52616d; font-weight: 600;
+        }
         QCalendarWidget QWidget { alternate-background-color: #f7f9fb; }
         QCalendarWidget QToolButton {
             min-height: 28px; padding: 3px 8px; color: #52616d;
