@@ -31,6 +31,25 @@ class IdentityPersistenceTests(unittest.TestCase):
                 identity._PARTNER_JSON = original_path
                 identity._PARTNER_STORE = original_store
 
+    def test_invalid_partner_records_are_treated_as_unpaired(self):
+        my_key = Ed25519PrivateKey.generate()
+        my_pk = my_key.public_key().public_bytes_raw()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            original_path = identity._PARTNER_JSON
+            original_store = identity._PARTNER_STORE
+            identity._PARTNER_JSON = Path(tmp) / "partner.json"
+            identity._PARTNER_STORE = AtomicJsonStore(identity._PARTNER_JSON, {})
+            try:
+                with patch.object(identity, "ensure_identity", return_value=(my_pk, my_key)):
+                    for invalid in (["not-an-object"], {"pk_b64": []}, {"pk_b64": "bad"}):
+                        identity._PARTNER_STORE.save(invalid)
+                        status = identity.get_status()
+                        self.assertFalse(status.paired)
+            finally:
+                identity._PARTNER_JSON = original_path
+                identity._PARTNER_STORE = original_store
+
 
 if __name__ == "__main__":
     unittest.main()

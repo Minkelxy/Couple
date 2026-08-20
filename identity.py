@@ -178,13 +178,21 @@ def get_status() -> IdentityStatus:
         if _PARTNER_JSON.exists():
             try:
                 pd = _PARTNER_STORE.load()
+                if not isinstance(pd, dict):
+                    raise ValueError("partner.json 不是对象")
                 pk_b64 = pd.get("pk_b64", "")
-                if pk_b64:
-                    partner_pk = _b64d(pk_b64)
-                    partner_nick = pd.get("nickname") or None
-                    partner_fp = _pk_fp(partner_pk)
-                    channel, safety = _compute_channel_and_safety(my_pk, partner_pk)
-            except (OSError, ValueError) as e:
+                if not isinstance(pk_b64, str) or not pk_b64:
+                    raise ValueError("partner.json 缺少公钥")
+                candidate_pk = _b64d(pk_b64)
+                _load_ed25519_public_key(candidate_pk)
+                if candidate_pk == my_pk:
+                    raise ValueError("partner.json 包含本机公钥")
+                partner_pk = candidate_pk
+                raw_nick = pd.get("nickname")
+                partner_nick = raw_nick if isinstance(raw_nick, str) else None
+                partner_fp = _pk_fp(partner_pk)
+                channel, safety = _compute_channel_and_safety(my_pk, partner_pk)
+            except (OSError, TypeError, ValueError) as e:
                 log_warning("读取对方公钥文件失败，视为未配对: %s", e)
         status = IdentityStatus(
             paired=(partner_pk is not None),
