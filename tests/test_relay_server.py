@@ -56,6 +56,15 @@ class RelayPollingTests(unittest.TestCase):
         self.assertEqual(corrupt.status_code, 503)
         self.assertEqual(corrupt.get_json()["db"], "corrupt")
 
+    def test_index_does_not_expose_database_statistics(self):
+        response = relay_server.app.test_client().get("/")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["service"], "CoupleSuite 云中转 (公钥身份版本)")
+        self.assertNotIn("total_letters", payload)
+        self.assertNotIn("paired_channels", payload)
+
     def test_pairing_endpoints_reject_non_object_json(self):
         client = relay_server.app.test_client()
 

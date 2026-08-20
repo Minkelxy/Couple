@@ -617,13 +617,8 @@ def health() -> tuple:
 
 @app.route("/")
 def index() -> tuple:
-    with _db_session() as conn:
-        total = conn.execute("SELECT COUNT(*) AS n FROM letters").fetchone()["n"]
-        chans = conn.execute("SELECT COUNT(*) AS n FROM channels").fetchone()["n"]
     return jsonify({
         "service": "CoupleSuite 云中转 (公钥身份版本)",
-        "total_letters": total,
-        "paired_channels": chans,
         "time": _now_iso(),
     }), 200
 
