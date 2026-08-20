@@ -64,6 +64,8 @@ class RelayPollingTests(unittest.TestCase):
         self.assertEqual(payload["service"], "CoupleSuite 云中转 (公钥身份版本)")
         self.assertNotIn("total_letters", payload)
         self.assertNotIn("paired_channels", payload)
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
+        self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
 
     def test_pairing_endpoints_reject_non_object_json(self):
         client = relay_server.app.test_client()

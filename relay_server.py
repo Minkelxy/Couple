@@ -81,6 +81,14 @@ _MAX_REQUEST_BYTES = 110 * 1024 * 1024
 _MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
 app.config["MAX_CONTENT_LENGTH"] = _MAX_REQUEST_BYTES
 
+
+@app.after_request
+def _set_security_headers(response):
+    """Prevent relay responses containing private data from being cached."""
+    response.headers.setdefault("Cache-Control", "no-store")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    return response
+
 # pair_code / channel_id 白名单：字母、数字、下划线、短横线（hex 也合法）
 _PAIR_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
 # ISO 8601 since 基本校验
