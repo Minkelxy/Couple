@@ -31,11 +31,24 @@ jobs:
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller pillow-avif-plugin
+          python -m pip install -r requirements.txt
+          python -m pip install pyinstaller pillow-avif-plugin
 
       - name: Build
-        run: pyinstaller couple_suite.spec --noconfirm
+        run: python -m PyInstaller couple_suite.spec --noconfirm
+
+      - name: Verify packaged executable
+        shell: pwsh
+        run: |
+          $exe = "dist/CoupleSuite/CoupleSuite.exe"
+          if (-not (Test-Path $exe)) {
+            throw "Packaged executable not found: $exe"
+          }
+          $file = Get-Item $exe
+          if ($file.Length -le 0) {
+            throw "Packaged executable is empty: $exe"
+          }
+          Write-Host "Verified $($file.FullName) ($($file.Length) bytes)"
 
       - name: Show dist
         run: Get-ChildItem dist -Recurse | Select-Object FullName, Length
