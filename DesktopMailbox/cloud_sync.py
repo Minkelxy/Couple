@@ -82,12 +82,13 @@ class CloudSyncClient:
                 body = resp.read()
             try:
                 result = json.loads(body.decode("utf-8"))
-                if not result.get("ok"):
-                    log_warning("云同步发送被服务端拒绝: %s", result.get("error"))
-                    return False
-            except (ValueError, json.JSONDecodeError):
-                # 老服务端可能不带 ok 字段，默认当成功
-                pass
+            except (ValueError, UnicodeDecodeError):
+                log_warning("云同步发送收到非 JSON 响应，保留 outbox 重试")
+                return False
+            if not isinstance(result, dict) or result.get("ok") is not True:
+                error = result.get("error") if isinstance(result, dict) else "invalid response"
+                log_warning("云同步发送被服务端拒绝: %s", error)
+                return False
             return True
         except Exception:
             log_exception("云同步发送失败")

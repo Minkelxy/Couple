@@ -72,6 +72,24 @@ class CloudSyncParsingTests(unittest.TestCase):
         self.assertEqual(server_ts, "")
         self.assertEqual(len(letters), 1)
 
+    def test_send_rejects_non_json_response(self):
+        with patch(
+            "DesktopMailbox.cloud_sync.urllib.request.urlopen",
+            return_value=_Response(b"<html>upstream failure</html>"),
+        ), patch.object(
+            self.client, "_build_send_payload", return_value={"pair_code": "pair-code"}
+        ), patch("DesktopMailbox.cloud_sync.log_warning"):
+            self.assertFalse(self.client.send_letter({}, "hello", b"", ""))
+
+    def test_send_requires_explicit_boolean_success(self):
+        with patch(
+            "DesktopMailbox.cloud_sync.urllib.request.urlopen",
+            return_value=_Response(json.dumps({"ok": "yes"}).encode("utf-8")),
+        ), patch.object(
+            self.client, "_build_send_payload", return_value={"pair_code": "pair-code"}
+        ):
+            self.assertFalse(self.client.send_letter({}, "hello", b"", ""))
+
 
 if __name__ == "__main__":
     unittest.main()
