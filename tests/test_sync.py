@@ -349,6 +349,52 @@ class SyncTransportTests(unittest.TestCase):
         hub._save_cursor.assert_not_called()
         hub._cloud_schedule_poll.assert_called_once()
 
+    def test_ui_dispatch_timeout_releases_retry_state(self):
+        hub = SimpleNamespace(
+            _my_id="local-id",
+            _dispatch_ack_enabled=True,
+            _dispatch_result_lock=threading.Lock(),
+            _dispatch_results={},
+            _dispatch_waiters={},
+            _message_seen_store=Mock(),
+            _message_seen_lock=threading.Lock(),
+            _seen_message_ids=collections.OrderedDict(),
+            _pending_message_ids=set(),
+            _message_seen_lru_max=16,
+            _sig_lock=threading.Lock(),
+            _seen_sigs=collections.OrderedDict(),
+            _sig_lru_max=16,
+            event_received=Mock(),
+        )
+        for name in (
+            "_check_and_record_message_id",
+            "_persist_message_ids",
+            "_forget_message_id",
+            "_commit_message_id",
+            "_register_event_dispatch",
+            "_take_event_dispatch_result",
+            "_forget_sig",
+        ):
+            setattr(hub, name, MethodType(getattr(SyncHub, name), hub))
+
+        from DesktopMailbox import sync as sync_module
+
+        with patch.object(
+            identity, "get_status", return_value=SimpleNamespace(paired=False)
+        ), patch.object(sync_module, "_EVENT_DISPATCH_TIMEOUT_SEC", 0.01):
+            with self.assertRaises(TimeoutError):
+                SyncHub.on_received(
+                    hub,
+                    {"type": "checkin", "message_id": "timeout-1"},
+                    "",
+                    b"",
+                    "",
+                )
+
+        self.assertEqual(hub._dispatch_waiters, {})
+        self.assertEqual(hub._dispatch_results, {})
+        self.assertNotIn("timeout-1", hub._seen_message_ids)
+
     def test_cloud_storage_failure_retries_real_partner_event(self):
         def dispatch(_event_type, meta, content, attachment, att_ext):
             checkin_window.handle_partner_event(meta, content, attachment, att_ext)
