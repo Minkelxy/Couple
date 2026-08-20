@@ -9,6 +9,33 @@ from backup import _safe_extract_all
 
 
 class BackupExtractionTests(unittest.TestCase):
+    def test_export_and_restore_cover_all_persistent_directories(self):
+        directory_names = ("CONFIG_DIR", "DATA_DIR", "IMAGES_DIR", "CHECKIN_DIR", "MOVIES_DIR", "TRAVEL_DIR")
+        archive_names = ("config", "data", "images", "checkin", "movies", "travel")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source_dirs = {name: root / name.lower() for name in directory_names}
+            destination_dirs = {name: root / f"restored_{name.lower()}" for name in directory_names}
+            patches = [patch.object(backup.app_paths, name, source_dirs[name]) for name in directory_names]
+            with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
+                for name, directory in source_dirs.items():
+                    directory.mkdir(parents=True)
+                    (directory / "marker.txt").write_text(name, encoding="utf-8")
+                archive = root / "backup.zip"
+                backup.export_backup(archive)
+                with zipfile.ZipFile(archive) as zf:
+                    self.assertEqual(
+                        {f"{arcname}/marker.txt" for arcname in archive_names},
+                        {name for name in zf.namelist() if name.endswith("/marker.txt")},
+                    )
+
+            restore_patches = [patch.object(backup.app_paths, name, destination_dirs[name]) for name in directory_names]
+            with restore_patches[0], restore_patches[1], restore_patches[2], restore_patches[3], restore_patches[4], restore_patches[5], patch.object(backup.app_paths, "CACHE_DIR", root / "cache"):
+                backup.restore_backup(archive)
+
+            for name, directory in destination_dirs.items():
+                self.assertEqual((directory / "marker.txt").read_text(encoding="utf-8"), name)
+
     def test_rejects_path_traversal(self):
         with tempfile.TemporaryDirectory() as tmp:
             archive = Path(tmp) / "unsafe.zip"

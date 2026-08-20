@@ -14,6 +14,18 @@ _MAX_BACKUP_ENTRIES = 10_000
 _MAX_BACKUP_MEMBER_BYTES = 500 * 1024 * 1024
 _MAX_BACKUP_UNCOMPRESSED_BYTES = 2 * 1024 * 1024 * 1024
 
+
+def _persistent_directories():
+    """Return the application directories that belong in a user backup."""
+    return (
+        ("config", app_paths.CONFIG_DIR),
+        ("data", app_paths.DATA_DIR),
+        ("images", app_paths.IMAGES_DIR),
+        ("checkin", app_paths.CHECKIN_DIR),
+        ("movies", app_paths.MOVIES_DIR),
+        ("travel", app_paths.TRAVEL_DIR),
+    )
+
 def export_backup(dest_zip: Path) -> Path:
     """把 config/ + data/ + images/ 打包到 zip。
     返回实际保存路径。文件名自动加日期后缀。
@@ -41,11 +53,10 @@ def export_backup(dest_zip: Path) -> Path:
     
     with zipfile.ZipFile(dest_zip, "w", zipfile.ZIP_DEFLATED) as zf:
         # config 目录
-        _add_dir_to_zip(zf, app_paths.CONFIG_DIR, "config")
+        for arcname, source in _persistent_directories():
+            _add_dir_to_zip(zf, source, arcname)
         # data 目录（信箱数据）
-        _add_dir_to_zip(zf, app_paths.DATA_DIR, "data")
         # images 目录（相框图片，可能很大，但用户选择备份时包含）
-        _add_dir_to_zip(zf, app_paths.IMAGES_DIR, "images")
     os.replace(dest_zip, final_dest)
     return final_dest
 
@@ -131,6 +142,15 @@ def restore_backup(zip_path: Path) -> None:
             except Exception:
                 shutil.rmtree(tmp, ignore_errors=True)
                 raise
+
+        for arcname, destination in _persistent_directories()[3:]:
+            source = tmp / arcname
+            if source.exists():
+                try:
+                    _overwrite_dir(source, destination)
+                except Exception:
+                    shutil.rmtree(tmp, ignore_errors=True)
+                    raise
 
         # 清理临时目录
         shutil.rmtree(tmp, ignore_errors=True)
