@@ -55,6 +55,8 @@ _MAX_ATTACHMENT_EXT_BYTES = 32
 _MAX_EVENT_TYPE_BYTES = 64
 _MAX_ATTACHMENT_B64_LEN = 4 * ((MAX_ATTACHMENT_BYTES + 2) // 3)
 _EVENT_DISPATCH_TIMEOUT_SEC = 30
+_LAN_ACK_OK = b"\x06"
+_LAN_ACK_REJECTED = b"\x15"
 
 
 class SyncSignalBridge(QObject):
@@ -399,6 +401,9 @@ class SyncHub(QObject):
                 s.sendall(content_b)
                 if attachment:
                     s.sendall(attachment)
+                ack = s.recv(1)
+                if ack not in (_LAN_ACK_OK, b""):
+                    raise OSError("peer did not acknowledge sync")
             if not silent:
                 self.send_result.emit(True, f"已同步到 {host}")
         except OSError as e:
@@ -813,10 +818,13 @@ def _make_handler(hub: SyncHub):
                     if att is None:
                         log_warning("同步附件未接收完整，丢弃连接")
                         return
-                hub.on_received(
-                    meta, content, att, att_ext
-                )
+                hub.on_received(meta, content, att, att_ext)
+                self.request.sendall(_LAN_ACK_OK)
             except Exception:
+                try:
+                    self.request.sendall(_LAN_ACK_REJECTED)
+                except OSError:
+                    pass
                 # 单次连接失败不影响服务端，但记录便于排查
                 log_exception("同步连接处理异常")
 

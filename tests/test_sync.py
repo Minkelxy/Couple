@@ -1,13 +1,16 @@
+import json
 import socket
+import socketserver
+import struct
 import tempfile
 import threading
 import unittest
 import collections
 from types import MethodType, SimpleNamespace
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
-from DesktopMailbox.sync import SyncHub, _recv_exact
+from DesktopMailbox.sync import SyncHub, _LAN_ACK_OK, _LAN_ACK_REJECTED, _make_handler, _recv_exact
 from DailyCheckin import checkin_window
 import identity
 from common_utils import AtomicJsonStore
@@ -137,6 +140,71 @@ class SyncTransportTests(unittest.TestCase):
         self.assertIsNone(hub._server)
         server.shutdown.assert_called_once_with()
         server.server_close.assert_called_once_with()
+
+    def test_lan_receiver_acknowledges_processed_payload(self):
+        hub = SimpleNamespace(on_received=Mock())
+        server = socketserver.ThreadingTCPServer(
+            ("127.0.0.1", 0), _make_handler(hub)
+        )
+        server.daemon_threads = True
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with socket.create_connection(server.server_address, timeout=2) as client:
+                header = json.dumps({
+                    "meta": {"type": "letter"},
+                    "content_len": 0,
+                    "attachment_len": 0,
+                    "attachment_ext": "",
+                }).encode("utf-8")
+                client.sendall(struct.pack(">I", len(header)) + header)
+                self.assertEqual(client.recv(1), _LAN_ACK_OK)
+            hub.on_received.assert_called_once_with(
+                {"type": "letter"}, "", b"", ""
+            )
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+    def test_lan_receiver_rejects_processing_failure(self):
+        hub = SimpleNamespace(on_received=Mock(side_effect=OSError("disk full")))
+        server = socketserver.ThreadingTCPServer(
+            ("127.0.0.1", 0), _make_handler(hub)
+        )
+        server.daemon_threads = True
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with socket.create_connection(server.server_address, timeout=2) as client:
+                header = json.dumps({
+                    "meta": {"type": "letter"},
+                    "content_len": 0,
+                    "attachment_len": 0,
+                    "attachment_ext": "",
+                }).encode("utf-8")
+                client.sendall(struct.pack(">I", len(header)) + header)
+                self.assertEqual(client.recv(1), _LAN_ACK_REJECTED)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+    def test_lan_sender_waits_for_processing_ack(self):
+        connection = MagicMock()
+        sock = connection.__enter__.return_value
+        sock.recv.return_value = _LAN_ACK_OK
+        hub = SimpleNamespace(send_result=Mock())
+        with patch(
+            "DesktopMailbox.sync.socket.create_connection",
+            return_value=connection,
+        ):
+            SyncHub._send_blocking(
+                hub, "127.0.0.1", 52014, {"type": "letter"}, "hello", b"", ""
+            )
+
+        sock.recv.assert_called_once_with(1)
+        hub.send_result.emit.assert_called_once_with(True, "已同步到 127.0.0.1")
 
     def test_start_is_idempotent_and_restartable_after_stop(self):
         hub = SimpleNamespace(
