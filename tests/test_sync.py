@@ -82,6 +82,42 @@ class SyncTransportTests(unittest.TestCase):
 
         hub._message_seen_store.save.assert_called_once_with(["event-a"])
 
+    def test_message_id_persistence_serializes_snapshot_and_save(self):
+        entered = threading.Event()
+        release = threading.Event()
+        state = {"active": 0, "overlap": False}
+        state_lock = threading.Lock()
+
+        def save(_items):
+            with state_lock:
+                state["active"] += 1
+                if state["active"] > 1:
+                    state["overlap"] = True
+            entered.set()
+            release.wait(timeout=2)
+            with state_lock:
+                state["active"] -= 1
+
+        hub = SimpleNamespace(
+            _message_seen_store=SimpleNamespace(save=save),
+            _message_seen_lock=threading.Lock(),
+            _seen_message_ids=collections.OrderedDict((("event-a", None),)),
+            _pending_message_ids=set(),
+        )
+        first = threading.Thread(target=SyncHub._persist_message_ids, args=(hub,))
+        second = threading.Thread(target=SyncHub._persist_message_ids, args=(hub,))
+        first.start()
+        self.assertTrue(entered.wait(timeout=2))
+        second.start()
+        second.join(timeout=0.1)
+        self.assertTrue(second.is_alive())
+        release.set()
+        first.join(timeout=2)
+        second.join(timeout=2)
+
+        self.assertFalse(state["overlap"])
+        self.assertFalse(first.is_alive() or second.is_alive())
+
     def test_send_async_reports_outbox_write_failure_without_raising(self):
         hub = SimpleNamespace(
             _my_id="local-id",

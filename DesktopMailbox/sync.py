@@ -677,7 +677,9 @@ class SyncHub(QObject):
                     message_id for message_id in self._seen_message_ids
                     if message_id not in self._pending_message_ids
                 ]
-            self._message_seen_store.save(items)
+                # Serialize snapshot construction with the atomic file replace
+                # so an older concurrent snapshot cannot erase newer IDs.
+                self._message_seen_store.save(items)
         except OSError:
             log_warning("同步事件去重表写入失败，当前进程内仍会去重")
 
