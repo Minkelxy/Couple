@@ -499,10 +499,11 @@ class SyncHub(QObject):
                 self._seen_sigs.popitem(last=False)  # 弹出最旧
             return True
 
-    def _check_and_record_message_id(self, message_id: str) -> bool:
+    def _check_and_record_message_id(self, message_id: str, persist: bool = True) -> bool:
         """Deduplicate non-letter events across LAN/cloud and client restarts."""
         if not isinstance(message_id, str) or not message_id or len(message_id) > 128:
             return True
+        should_persist = False
         with self._message_seen_lock:
             if message_id in self._seen_message_ids:
                 self._seen_message_ids.move_to_end(message_id)
@@ -510,11 +511,22 @@ class SyncHub(QObject):
             self._seen_message_ids[message_id] = None
             if len(self._seen_message_ids) > self._message_seen_lru_max:
                 self._seen_message_ids.popitem(last=False)
-            try:
-                self._message_seen_store.save(list(self._seen_message_ids))
-            except OSError:
-                log_warning("同步事件去重表写入失败，当前进程内仍会去重")
-            return True
+            should_persist = persist
+        if should_persist:
+            self._persist_message_ids()
+        return True
+
+    def _persist_message_ids(self) -> None:
+        try:
+            with self._message_seen_lock:
+                items = list(self._seen_message_ids)
+            self._message_seen_store.save(items)
+        except OSError:
+            log_warning("同步事件去重表写入失败，当前进程内仍会去重")
+
+    def _forget_message_id(self, message_id: str) -> None:
+        with self._message_seen_lock:
+            self._seen_message_ids.pop(message_id, None)
 
     def on_received(
         self,
@@ -578,10 +590,16 @@ class SyncHub(QObject):
             log_warning("收到非法同步事件类型，已丢弃: %r", msg_type)
             return
         if msg_type != "letter":
-            if not self._check_and_record_message_id(meta.get("message_id", "")):
+            message_id = meta.get("message_id", "")
+            if not self._check_and_record_message_id(message_id, persist=False):
                 log_info("收到重复同步事件，已丢弃: message_id=%s", meta.get("message_id"))
                 return
-            self.event_received.emit(msg_type, meta, content, attachment or b"", att_ext)
+            try:
+                self.event_received.emit(msg_type, meta, content, attachment or b"", att_ext)
+            except Exception:
+                self._forget_message_id(message_id)
+                raise
+            self._persist_message_ids()
             return
         try:
             deliver_at = datetime.fromisoformat(meta["deliver_at"])

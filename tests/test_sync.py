@@ -3,7 +3,7 @@ import tempfile
 import threading
 import unittest
 import collections
-from types import SimpleNamespace
+from types import MethodType, SimpleNamespace
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -20,6 +20,7 @@ class SyncTransportTests(unittest.TestCase):
             _seen_message_ids=collections.OrderedDict(),
             _message_seen_lru_max=2,
         )
+        hub._persist_message_ids = MethodType(SyncHub._persist_message_ids, hub)
 
         self.assertTrue(SyncHub._check_and_record_message_id(hub, "event-1"))
         self.assertTrue(SyncHub._check_and_record_message_id(hub, "event-2"))
@@ -27,6 +28,35 @@ class SyncTransportTests(unittest.TestCase):
         self.assertTrue(SyncHub._check_and_record_message_id(hub, "event-3"))
         self.assertNotIn("event-2", hub._seen_message_ids)
         hub._message_seen_store.save.assert_called()
+
+    def test_event_id_is_not_persisted_when_event_handler_fails(self):
+        hub = SimpleNamespace(
+            _my_id="local-id",
+            _message_seen_store=Mock(),
+            _message_seen_lock=threading.Lock(),
+            _seen_message_ids=collections.OrderedDict(),
+            _message_seen_lru_max=2,
+            event_received=SimpleNamespace(
+                emit=Mock(side_effect=RuntimeError("handler failed"))
+            ),
+        )
+        hub._check_and_record_message_id = MethodType(
+            SyncHub._check_and_record_message_id, hub
+        )
+        hub._persist_message_ids = MethodType(SyncHub._persist_message_ids, hub)
+        hub._forget_message_id = MethodType(SyncHub._forget_message_id, hub)
+        with patch.object(identity, "get_status", return_value=SimpleNamespace(paired=False)):
+            with self.assertRaises(RuntimeError):
+                SyncHub.on_received(
+                    hub,
+                    {"type": "checkin", "message_id": "event-failed"},
+                    "",
+                    b"",
+                    "",
+                )
+
+        self.assertNotIn("event-failed", hub._seen_message_ids)
+        hub._message_seen_store.save.assert_not_called()
 
     def test_send_async_reports_outbox_write_failure_without_raising(self):
         hub = SimpleNamespace(
