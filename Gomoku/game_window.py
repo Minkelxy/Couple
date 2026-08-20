@@ -40,7 +40,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import store
-from .board_widget import GomokuBoard
+from .board_widget import SIZE as BOARD_SIZE, GomokuBoard
 from common_utils import log_info, log_warning
 
 # 模块级引用：当前 GameWindow 实例 + hub 引用（供懒创建使用）
@@ -412,12 +412,14 @@ class GameWindow(QMainWindow):
             log_warning("gomoku move IGNORED invalid coords row=%s col=%s",
                         meta.get("row"), meta.get("col"))
             return
-        if row < 0 or col < 0:
-            log_warning("gomoku move IGNORED negative coords row=%d col=%d", row, col)
+        if not (0 <= row < BOARD_SIZE and 0 <= col < BOARD_SIZE):
+            log_warning("gomoku move IGNORED out-of-range coords row=%d col=%d", row, col)
             return
         # 对方颜色按 white 放置
         log_info("gomoku RECV move (%d,%d) session=%s", row, col, self._session_id)
-        self._board.place_stone(row, col, 2)
+        if not self._board.place_stone(row, col, 2):
+            log_warning("gomoku move IGNORED occupied or unavailable cell row=%d col=%d", row, col)
+            return
         # 追加写棋谱（对方落子）
         try:
             store.append_move(self._session_id, {

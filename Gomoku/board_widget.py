@@ -94,15 +94,15 @@ class GomokuBoard(QWidget):
 
     # ---------- 公共接口 ----------
 
-    def place_stone(self, row: int, col: int, color: int) -> None:
-        """落子（本地或远端）：写入网格、切换回合、判定胜负。"""
+    def place_stone(self, row: int, col: int, color: int) -> bool:
+        """落子（本地或远端），返回是否实际写入棋盘。"""
         # 最终防线：已有赢家就不再落子，避免迟到的落子二次触发胜负判定
         if self._winner:
-            return
+            return False
         if not (0 <= row < SIZE and 0 <= col < SIZE):
-            return
+            return False
         if self._grid[row][col] != 0:
-            return
+            return False
         self._grid[row][col] = color
         self._moves.append((row, col, color))
         self._current = 2 if color == 1 else 1
@@ -117,6 +117,7 @@ class GomokuBoard(QWidget):
             self._winner = 0
             self._locked = True
             self.game_over.emit(0)
+        return True
 
     def _check_win(self, row: int, col: int) -> int:
         """从 (row, col) 出发检查 4 个方向是否五连，返回胜方颜色或 0。"""
