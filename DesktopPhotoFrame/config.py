@@ -131,6 +131,18 @@ def _ensure_default_album_entry(albums: list[dict]) -> list[dict]:
     return albums
 
 
+def _normalize_basic_types(data: dict) -> dict:
+    for key in (
+        "polaroid_frame", "show_watermark", "ken_burns",
+        "blur_background", "wheel_zoom_enabled",
+    ):
+        if not isinstance(data.get(key), bool):
+            data[key] = DEFAULTS[key]
+    if not isinstance(data.get("image_dir"), str):
+        data["image_dir"] = str(app_paths.IMAGES_DIR)
+    return data
+
+
 def load() -> dict:
     data = deepcopy(DEFAULTS)
     app_paths.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -172,11 +184,13 @@ def load() -> dict:
             except (TypeError, ValueError):
                 data[k] = None
     # image_dir 的兜底：如果用户之前把它设到了不存在/空的路径，就切回默认相册目录
-    image_dir_str = str(data.get("image_dir", "") or str(app_paths.IMAGES_DIR))
+    raw_image_dir = data.get("image_dir", "")
+    image_dir_str = raw_image_dir if isinstance(raw_image_dir, str) else ""
+    image_dir_str = image_dir_str or str(app_paths.IMAGES_DIR)
     if not image_dir_str or image_dir_str.lower() in {"null", "none"}:
         image_dir_str = str(app_paths.IMAGES_DIR)
     data["image_dir"] = image_dir_str
-    return data
+    return _normalize_basic_types(data)
 
 
 def save(data: dict) -> None:
@@ -186,6 +200,7 @@ def save(data: dict) -> None:
 def update(**kwargs) -> dict:
     data = load()
     data.update(kwargs)
+    data = _normalize_basic_types(data)
     save(data)
     return data
 

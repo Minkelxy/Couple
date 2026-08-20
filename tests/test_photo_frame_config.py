@@ -7,6 +7,44 @@ from DesktopPhotoFrame import config
 
 
 class PhotoFrameConfigTests(unittest.TestCase):
+    def test_load_normalizes_invalid_boolean_settings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_store = config._store
+            config._store = AtomicJsonStore(Path(tmp) / "photo_frame.json", {})
+            try:
+                config._store.save({
+                    "polaroid_frame": "false",
+                    "show_watermark": None,
+                    "ken_burns": 1,
+                    "blur_background": [],
+                    "wheel_zoom_enabled": "yes",
+                    "image_dir": ["invalid"],
+                })
+
+                loaded = config.load()
+
+                self.assertTrue(loaded["polaroid_frame"])
+                self.assertTrue(loaded["show_watermark"])
+                self.assertTrue(loaded["ken_burns"])
+                self.assertFalse(loaded["blur_background"])
+                self.assertTrue(loaded["wheel_zoom_enabled"])
+                self.assertEqual(loaded["image_dir"], str(config.app_paths.IMAGES_DIR))
+            finally:
+                config._store = original_store
+
+    def test_update_normalizes_boolean_settings_before_persisting(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_store = config._store
+            config._store = AtomicJsonStore(Path(tmp) / "photo_frame.json", {})
+            try:
+                updated = config.update(ken_burns="off", blur_background=True)
+
+                self.assertTrue(updated["ken_burns"])
+                self.assertTrue(updated["blur_background"])
+                self.assertTrue(config._store.load()["ken_burns"])
+            finally:
+                config._store = original_store
+
     def test_load_uses_atomic_store_and_recovers_invalid_values(self):
         with tempfile.TemporaryDirectory() as tmp:
             original_store = config._store
