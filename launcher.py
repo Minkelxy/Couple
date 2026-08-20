@@ -110,9 +110,7 @@ def main() -> int:
     checker = DueChecker()
     checker.start()
     hub_holder = {"hub": SyncHub(mb_config.load())}
-    hub_holder["hub"].start()
     set_gomoku_hub(hub_holder["hub"])
-    log_info("同步服务与到期检查已启动")
 
     # 窗口按需创建/复用
     compose_win: ComposeWindow | None = None
@@ -521,6 +519,8 @@ def main() -> int:
     connect_sync_hub(hub_holder["hub"])
     app.aboutToQuit.connect(lambda: hub_holder["hub"].stop())
     app.aboutToQuit.connect(lambda: log_info("========== 应用退出 =========="))
+    hub_holder["hub"].start()
+    log_info("同步服务与到期检查已启动")
 
     update_unread()
 

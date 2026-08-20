@@ -50,7 +50,6 @@ def main() -> int:
 
     # 局域网同步
     hub = SyncHub(config.load())
-    hub.start()
 
     def update_unread() -> None:
         tray.set_unread_count(letter_store.count_unread())
@@ -149,6 +148,7 @@ def main() -> int:
 
     # 退出时关闭同步服务
     app.aboutToQuit.connect(hub.stop)
+    hub.start()
 
     update_unread()
 
