@@ -263,10 +263,16 @@ class SyncTransportTests(unittest.TestCase):
             _sig_lock=threading.Lock(),
             _seen_sigs=collections.OrderedDict(),
             _sig_lru_max=16,
+            _dispatch_result_lock=threading.Lock(),
+            _dispatch_results={},
             letter_received=Mock(),
         )
         hub._check_and_record_sig = MethodType(SyncHub._check_and_record_sig, hub)
         hub._forget_sig = MethodType(SyncHub._forget_sig, hub)
+        hub.record_event_dispatch = MethodType(SyncHub.record_event_dispatch, hub)
+        hub._take_event_dispatch_result = MethodType(
+            SyncHub._take_event_dispatch_result, hub
+        )
         meta = {"type": "letter", "sig_b64": "sig-lan-retry"}
 
         with patch.object(
@@ -400,6 +406,12 @@ class SyncTransportTests(unittest.TestCase):
         hub._commit_message_id = MethodType(SyncHub._commit_message_id, hub)
         hub._check_and_record_sig = MethodType(SyncHub._check_and_record_sig, hub)
         hub._forget_sig = MethodType(SyncHub._forget_sig, hub)
+        hub._dispatch_result_lock = threading.Lock()
+        hub._dispatch_results = {}
+        hub.record_event_dispatch = MethodType(SyncHub.record_event_dispatch, hub)
+        hub._take_event_dispatch_result = MethodType(
+            SyncHub._take_event_dispatch_result, hub
+        )
         hub.on_received = MethodType(SyncHub.on_received, hub)
 
         with patch.object(identity, "get_status", return_value=SimpleNamespace(paired=False)), \

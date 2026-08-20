@@ -133,6 +133,7 @@ def main() -> int:
         lambda _ok, message: tray.show_toast("同步", message),
         on_sync_received,
         lambda *_: None,
+        lambda meta, ok: hub.record_event_dispatch(meta, ok),
     )
     connection_type = Qt.ConnectionType.QueuedConnection
 
@@ -143,6 +144,9 @@ def main() -> int:
     checker.letters_due.connect(on_letters_due)
     hub.send_result.connect(sync_bridge.send_result, connection_type)
     hub.letter_received.connect(sync_bridge.letter_received, connection_type)
+    hub.event_received.connect(
+        sync_bridge.event_received, Qt.ConnectionType.BlockingQueuedConnection
+    )
 
     # 退出时关闭同步服务
     app.aboutToQuit.connect(hub.stop)

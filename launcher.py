@@ -233,14 +233,19 @@ def main() -> int:
         tray.show_toast("同步", message)
 
     sync_bridge = SyncSignalBridge(
-        on_send_result, on_sync_received, on_event_received
+        on_send_result,
+        on_sync_received,
+        on_event_received,
+        lambda meta, ok: hub_holder["hub"].record_event_dispatch(meta, ok),
     )
 
     def connect_sync_hub(hub: SyncHub) -> None:
         connection_type = Qt.ConnectionType.QueuedConnection
         hub.send_result.connect(sync_bridge.send_result, connection_type)
         hub.letter_received.connect(sync_bridge.letter_received, connection_type)
-        hub.event_received.connect(sync_bridge.event_received, connection_type)
+        hub.event_received.connect(
+            sync_bridge.event_received, Qt.ConnectionType.BlockingQueuedConnection
+        )
 
     def open_settings() -> None:
         nonlocal settings_win

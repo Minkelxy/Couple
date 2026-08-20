@@ -59,11 +59,18 @@ _MAX_ATTACHMENT_B64_LEN = 4 * ((MAX_ATTACHMENT_BYTES + 2) // 3)
 class SyncSignalBridge(QObject):
     """Marshal SyncHub callbacks from worker threads into the GUI thread."""
 
-    def __init__(self, on_send_result, on_letter_received, on_event_received) -> None:
+    def __init__(
+        self,
+        on_send_result,
+        on_letter_received,
+        on_event_received,
+        on_event_done=None,
+    ) -> None:
         super().__init__()
         self._on_send_result = on_send_result
         self._on_letter_received = on_letter_received
         self._on_event_received = on_event_received
+        self._on_event_done = on_event_done
 
     @Slot(bool, str)
     def send_result(self, ok: bool, message: str) -> None:
@@ -82,9 +89,15 @@ class SyncSignalBridge(QObject):
         attachment: bytes,
         attachment_ext: str,
     ) -> None:
-        self._on_event_received(
-            event_type, meta, content, attachment, attachment_ext
-        )
+        ok = True
+        try:
+            self._on_event_received(
+                event_type, meta, content, attachment, attachment_ext
+            )
+        except Exception:
+            ok = False
+        if self._on_event_done is not None:
+            self._on_event_done(meta, ok)
 
 
 def _cursor_namespace(cfg: dict, mode: str) -> str:
@@ -167,6 +180,8 @@ class SyncHub(QObject):
         self._message_seen_lru_max = 2048
         self._seen_message_ids: collections.OrderedDict[str, None] = collections.OrderedDict()
         self._pending_message_ids: set[str] = set()
+        self._dispatch_result_lock = threading.Lock()
+        self._dispatch_results: dict[str, bool] = {}
         stored_message_ids = self._message_seen_store.load()
         if isinstance(stored_message_ids, list):
             for message_id in stored_message_ids[-self._message_seen_lru_max:]:
@@ -549,6 +564,19 @@ class SyncHub(QObject):
         with self._sig_lock:
             self._seen_sigs.pop(sig_b64, None)
 
+    def record_event_dispatch(self, meta: dict, ok: bool) -> None:
+        message_id = meta.get("message_id") if isinstance(meta, dict) else None
+        if not isinstance(message_id, str) or not message_id:
+            return
+        with self._dispatch_result_lock:
+            self._dispatch_results[message_id] = bool(ok)
+
+    def _take_event_dispatch_result(self, message_id: str) -> bool | None:
+        if not isinstance(message_id, str) or not message_id:
+            return None
+        with self._dispatch_result_lock:
+            return self._dispatch_results.pop(message_id, None)
+
     def _check_and_record_message_id(self, message_id: str, persist: bool = True) -> bool:
         """Deduplicate non-letter events across LAN/cloud and client restarts."""
         if not isinstance(message_id, str) or not message_id or len(message_id) > 128:
@@ -664,6 +692,11 @@ class SyncHub(QObject):
                 if forget_sig is not None:
                     forget_sig(sig_b64)
                 raise
+            dispatch_result = self._take_event_dispatch_result(message_id)
+            if dispatch_result is False:
+                self._forget_message_id(message_id)
+                self._forget_sig(sig_b64)
+                raise OSError("同步事件主线程处理失败")
             self._commit_message_id(message_id)
             return
         try:

@@ -21,10 +21,12 @@ class LauncherSyncBridgeTests(unittest.TestCase):
     def test_worker_signal_is_delivered_on_main_thread(self):
         main_thread = QThread.currentThread()
         received = []
+        completed = []
         bridge = SyncSignalBridge(
             lambda *_: None,
             lambda *_: None,
             lambda *args: received.append(QThread.currentThread()),
+            lambda meta, ok: completed.append((meta, ok)),
         )
         worker = _Worker()
         worker.event.connect(bridge.event_received, Qt.ConnectionType.QueuedConnection)
@@ -38,6 +40,20 @@ class LauncherSyncBridgeTests(unittest.TestCase):
 
         self.assertEqual(len(received), 1)
         self.assertIs(received[0], main_thread)
+        self.assertEqual(completed, [({"kind": "heartbeat"}, True)])
+
+    def test_event_handler_failure_is_reported_to_sync_thread(self):
+        completed = []
+        bridge = SyncSignalBridge(
+            lambda *_: None,
+            lambda *_: None,
+            lambda *_: (_ for _ in ()).throw(OSError("disk full")),
+            lambda meta, ok: completed.append((meta, ok)),
+        )
+
+        bridge.event_received("checkin", {"message_id": "retry-1"}, "", b"", "")
+
+        self.assertEqual(completed, [({"message_id": "retry-1"}, False)])
 
 
 if __name__ == "__main__":
