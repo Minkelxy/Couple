@@ -24,7 +24,6 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import (
     QColor,
-    QFont,
     QMouseEvent,
     QPainter,
     QPainterPath,
@@ -35,6 +34,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QMessageBox,
+    QApplication,
     QVBoxLayout,
     QWidget,
 )
@@ -490,7 +490,9 @@ class FrameWindow(QWidget):
         p = QPainter(pm)
         p.setRenderHint(QPainter.Antialiasing)
         p.setPen(QPen(QColor(200, 200, 200, 180)))
-        p.setFont(QFont("Microsoft YaHei", 11))
+        watermark_font = QApplication.font()
+        watermark_font.setPointSize(11)
+        p.setFont(watermark_font)
         p.drawText(QRectF(0, 0, pm.width(), pm.height()), Qt.AlignCenter, text)
         p.end()
         self._label.set_image(pm, kb_enabled=False)

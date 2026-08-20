@@ -19,10 +19,10 @@ from PySide6.QtCore import (
     QPointF, QRectF, Qt, Signal,
 )
 from PySide6.QtGui import (
-    QBrush, QColor, QFont, QMouseEvent, QPainter, QPen, QPolygonF,
+    QBrush, QColor, QMouseEvent, QPainter, QPen, QPolygonF,
     QWheelEvent,
 )
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QApplication, QWidget
 
 from .china_outline import (
     all_polygons, load_provinces,
@@ -212,7 +212,8 @@ class ChinaMapWidget(QWidget):
             p.drawLine(pts[i], pts[i + 1])
 
     def _draw_cities(self, p: QPainter) -> None:
-        font = QFont("Microsoft YaHei", 9)
+        font = QApplication.font()
+        font.setPointSize(9)
         p.setFont(font)
         for c in self._cities:
             try:
@@ -253,7 +254,8 @@ class ChinaMapWidget(QWidget):
                 p.drawText(QPointF(pt.x() + r + 3, pt.y() + 4), name)
 
     def _draw_legend(self, p: QPainter) -> None:
-        font = QFont("Microsoft YaHei", 9)
+        font = QApplication.font()
+        font.setPointSize(9)
         p.setFont(font)
         x = self.width() - 130
         y = 16
