@@ -18,6 +18,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 import app_paths
 import migration
+from ui_theme import apply_theme
 
 from common_utils import log_info, log_exception, log_warning
 
@@ -70,6 +71,7 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("CoupleSuite")
     app.setQuitOnLastWindowClosed(False)  # 靠托盘退出
+    apply_theme(app)
 
     # ===== 数据目录初始化与旧数据迁移 =====
     app_paths.ensure_dirs()
