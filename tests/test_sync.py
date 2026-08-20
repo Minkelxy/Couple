@@ -2,6 +2,7 @@ import socket
 import tempfile
 import threading
 import unittest
+import collections
 from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -12,6 +13,21 @@ from common_utils import AtomicJsonStore
 
 
 class SyncTransportTests(unittest.TestCase):
+    def test_message_id_deduplication_is_bounded_and_persisted(self):
+        hub = SimpleNamespace(
+            _message_seen_store=Mock(),
+            _message_seen_lock=threading.Lock(),
+            _seen_message_ids=collections.OrderedDict(),
+            _message_seen_lru_max=2,
+        )
+
+        self.assertTrue(SyncHub._check_and_record_message_id(hub, "event-1"))
+        self.assertTrue(SyncHub._check_and_record_message_id(hub, "event-2"))
+        self.assertFalse(SyncHub._check_and_record_message_id(hub, "event-1"))
+        self.assertTrue(SyncHub._check_and_record_message_id(hub, "event-3"))
+        self.assertNotIn("event-2", hub._seen_message_ids)
+        hub._message_seen_store.save.assert_called()
+
     def test_send_async_reports_outbox_write_failure_without_raising(self):
         hub = SimpleNamespace(
             _my_id="local-id",

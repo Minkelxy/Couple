@@ -128,6 +128,17 @@ class SyncHub(QObject):
         self._outbox = OutboxStore(app_paths.DATA_DIR / "cloud_outbox.json")
         self._outbox_lock = threading.Lock()
         self._outbox_inflight: set[str] = set()
+        self._message_seen_store = AtomicJsonStore(
+            app_paths.DATA_DIR / "sync_message_ids.json", []
+        )
+        self._message_seen_lock = threading.Lock()
+        self._message_seen_lru_max = 2048
+        self._seen_message_ids: collections.OrderedDict[str, None] = collections.OrderedDict()
+        stored_message_ids = self._message_seen_store.load()
+        if isinstance(stored_message_ids, list):
+            for message_id in stored_message_ids[-self._message_seen_lru_max:]:
+                if isinstance(message_id, str) and message_id:
+                    self._seen_message_ids[message_id] = None
         # 接收端签名 LRU 去重：容量 1024，线程安全（on_received 在 socket 线程与云轮询线程中可能并发）
         # 基于 meta.sig_b64 去重，防止同一签名消息被重复落盘/触发事件
         self._seen_sigs: collections.OrderedDict[str, None] = collections.OrderedDict()
@@ -488,6 +499,23 @@ class SyncHub(QObject):
                 self._seen_sigs.popitem(last=False)  # 弹出最旧
             return True
 
+    def _check_and_record_message_id(self, message_id: str) -> bool:
+        """Deduplicate non-letter events across LAN/cloud and client restarts."""
+        if not isinstance(message_id, str) or not message_id or len(message_id) > 128:
+            return True
+        with self._message_seen_lock:
+            if message_id in self._seen_message_ids:
+                self._seen_message_ids.move_to_end(message_id)
+                return False
+            self._seen_message_ids[message_id] = None
+            if len(self._seen_message_ids) > self._message_seen_lru_max:
+                self._seen_message_ids.popitem(last=False)
+            try:
+                self._message_seen_store.save(list(self._seen_message_ids))
+            except OSError:
+                log_warning("同步事件去重表写入失败，当前进程内仍会去重")
+            return True
+
     def on_received(
         self,
         meta: dict,
@@ -550,6 +578,9 @@ class SyncHub(QObject):
             log_warning("收到非法同步事件类型，已丢弃: %r", msg_type)
             return
         if msg_type != "letter":
+            if not self._check_and_record_message_id(meta.get("message_id", "")):
+                log_info("收到重复同步事件，已丢弃: message_id=%s", meta.get("message_id"))
+                return
             self.event_received.emit(msg_type, meta, content, attachment or b"", att_ext)
             return
         try:
