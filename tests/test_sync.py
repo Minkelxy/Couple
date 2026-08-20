@@ -408,6 +408,7 @@ class SyncTransportTests(unittest.TestCase):
         hub._forget_sig = MethodType(SyncHub._forget_sig, hub)
         hub._dispatch_result_lock = threading.Lock()
         hub._dispatch_results = {}
+        hub._dispatch_waiters = {}
         hub.record_event_dispatch = MethodType(SyncHub.record_event_dispatch, hub)
         hub._take_event_dispatch_result = MethodType(
             SyncHub._take_event_dispatch_result, hub

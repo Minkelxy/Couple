@@ -241,11 +241,10 @@ def main() -> int:
 
     def connect_sync_hub(hub: SyncHub) -> None:
         connection_type = Qt.ConnectionType.QueuedConnection
+        hub.enable_event_dispatch_ack()
         hub.send_result.connect(sync_bridge.send_result, connection_type)
         hub.letter_received.connect(sync_bridge.letter_received, connection_type)
-        hub.event_received.connect(
-            sync_bridge.event_received, Qt.ConnectionType.BlockingQueuedConnection
-        )
+        hub.event_received.connect(sync_bridge.event_received, connection_type)
 
     def open_settings() -> None:
         nonlocal settings_win

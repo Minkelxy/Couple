@@ -54,6 +54,7 @@ _MAX_CONTENT_BYTES = 1 * 1024 * 1024
 _MAX_ATTACHMENT_EXT_BYTES = 32
 _MAX_EVENT_TYPE_BYTES = 64
 _MAX_ATTACHMENT_B64_LEN = 4 * ((MAX_ATTACHMENT_BYTES + 2) // 3)
+_EVENT_DISPATCH_TIMEOUT_SEC = 30
 
 
 class SyncSignalBridge(QObject):
@@ -182,6 +183,8 @@ class SyncHub(QObject):
         self._pending_message_ids: set[str] = set()
         self._dispatch_result_lock = threading.Lock()
         self._dispatch_results: dict[str, bool] = {}
+        self._dispatch_waiters: dict[str, threading.Event] = {}
+        self._dispatch_ack_enabled = False
         stored_message_ids = self._message_seen_store.load()
         if isinstance(stored_message_ids, list):
             for message_id in stored_message_ids[-self._message_seen_lru_max:]:
@@ -569,12 +572,27 @@ class SyncHub(QObject):
         if not isinstance(message_id, str) or not message_id:
             return
         with self._dispatch_result_lock:
-            self._dispatch_results[message_id] = bool(ok)
+            waiter = self._dispatch_waiters.get(message_id)
+            if waiter is not None:
+                self._dispatch_results[message_id] = bool(ok)
+                waiter.set()
+
+    def enable_event_dispatch_ack(self) -> None:
+        self._dispatch_ack_enabled = True
+
+    def _register_event_dispatch(self, message_id: str) -> threading.Event | None:
+        if not self._dispatch_ack_enabled or not message_id:
+            return None
+        waiter = threading.Event()
+        with self._dispatch_result_lock:
+            self._dispatch_waiters[message_id] = waiter
+        return waiter
 
     def _take_event_dispatch_result(self, message_id: str) -> bool | None:
         if not isinstance(message_id, str) or not message_id:
             return None
         with self._dispatch_result_lock:
+            self._dispatch_waiters.pop(message_id, None)
             return self._dispatch_results.pop(message_id, None)
 
     def _check_and_record_message_id(self, message_id: str, persist: bool = True) -> bool:
@@ -685,6 +703,12 @@ class SyncHub(QObject):
                 log_info("收到重复同步事件，已丢弃: message_id=%s", meta.get("message_id"))
                 return
             try:
+                register_dispatch = getattr(self, "_register_event_dispatch", None)
+                dispatch_waiter = (
+                    register_dispatch(message_id)
+                    if register_dispatch is not None
+                    else None
+                )
                 self.event_received.emit(msg_type, meta, content, attachment or b"", att_ext)
             except Exception:
                 self._forget_message_id(message_id)
@@ -692,7 +716,18 @@ class SyncHub(QObject):
                 if forget_sig is not None:
                     forget_sig(sig_b64)
                 raise
-            dispatch_result = self._take_event_dispatch_result(message_id)
+            if dispatch_waiter is not None:
+                if not dispatch_waiter.wait(_EVENT_DISPATCH_TIMEOUT_SEC):
+                    take_dispatch = getattr(self, "_take_event_dispatch_result", None)
+                    if take_dispatch is not None:
+                        take_dispatch(message_id)
+                    self._forget_message_id(message_id)
+                    self._forget_sig(sig_b64)
+                    raise TimeoutError("同步事件主线程处理超时")
+            take_dispatch = getattr(self, "_take_event_dispatch_result", None)
+            dispatch_result = (
+                take_dispatch(message_id) if take_dispatch is not None else None
+            )
             if dispatch_result is False:
                 self._forget_message_id(message_id)
                 self._forget_sig(sig_b64)

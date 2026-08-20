@@ -136,6 +136,7 @@ def main() -> int:
         lambda meta, ok: hub.record_event_dispatch(meta, ok),
     )
     connection_type = Qt.ConnectionType.QueuedConnection
+    hub.enable_event_dispatch_ack()
 
     # 连信号
     tray.compose_requested.connect(open_compose)
@@ -144,9 +145,7 @@ def main() -> int:
     checker.letters_due.connect(on_letters_due)
     hub.send_result.connect(sync_bridge.send_result, connection_type)
     hub.letter_received.connect(sync_bridge.letter_received, connection_type)
-    hub.event_received.connect(
-        sync_bridge.event_received, Qt.ConnectionType.BlockingQueuedConnection
-    )
+    hub.event_received.connect(sync_bridge.event_received, connection_type)
 
     # 退出时关闭同步服务
     app.aboutToQuit.connect(hub.stop)
