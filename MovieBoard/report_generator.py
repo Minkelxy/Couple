@@ -239,6 +239,13 @@ def generate_year_report(year: int) -> str:
     for b in blocks:
         y += b["space_before"]
         lines = _wrap(b["text"], b["font"], content_w) if b["wrap"] else [b["text"]]
+        if b["font"] is f_head:
+            heading_h = _line_height(b["font"])
+            draw.rounded_rectangle(
+                (_MARGIN_X - 16, y + 3, _MARGIN_X - 10, y + heading_h - 3),
+                radius=3,
+                fill=_PINK,
+            )
         for line in lines:
             if b["align"] == "center":
                 w = b["font"].getlength(line)
@@ -247,6 +254,13 @@ def generate_year_report(year: int) -> str:
                 x = _MARGIN_X
             draw.text((x, y), line, font=b["font"], fill=b["color"])
             y += _line_height(b["font"])
+
+    # Bottom rule gives the long report a deliberate visual ending.
+    draw.line(
+        (_MARGIN_X, total_h - 28, _WIDTH - _MARGIN_X, total_h - 28),
+        fill=(223, 229, 236),
+        width=2,
+    )
 
     dest = app_paths.MOVIES_DIR / f"report_{year}.png"
     img.save(dest)
