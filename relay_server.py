@@ -223,6 +223,12 @@ def _init_db() -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_pair_created ON letters(pair_code, created_at)"
         )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pair_id ON letters(pair_code, id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_letters_created ON letters(created_at)"
+        )
         conn.execute("""
             CREATE TABLE IF NOT EXISTS channels (
                 channel_id   TEXT PRIMARY KEY NOT NULL,

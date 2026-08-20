@@ -59,6 +59,25 @@ class RelayPollingTests(unittest.TestCase):
         self.assertEqual(corrupt.status_code, 503)
         self.assertEqual(corrupt.get_json()["db"], "corrupt")
 
+    def test_database_indexes_cover_cursor_and_cleanup_queries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_db_path = relay_server._DB_PATH
+            relay_server._DB_PATH = Path(tmp) / "letters.db"
+            try:
+                relay_server._init_db()
+                with relay_server._db_session() as conn:
+                    indexes = {
+                        row["name"]
+                        for row in conn.execute(
+                            "SELECT name FROM sqlite_master "
+                            "WHERE type = 'index' AND tbl_name = 'letters'"
+                        ).fetchall()
+                    }
+                self.assertIn("idx_pair_id", indexes)
+                self.assertIn("idx_letters_created", indexes)
+            finally:
+                relay_server._DB_PATH = original_db_path
+
     def test_cleanup_once_removes_only_expired_letters(self):
         with tempfile.TemporaryDirectory() as tmp:
             original_db_path = relay_server._DB_PATH
