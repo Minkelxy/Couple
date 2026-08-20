@@ -127,6 +127,12 @@ class CloudSyncClient:
             data = json.loads(raw.decode("utf-8"))
             server_cursor = _normalize_cursor(data.get("server_cursor"))
             server_ts = server_cursor or _normalize_server_ts(data.get("server_ts", ""))
+            skipped_ids = data.get("skipped_ids", [])
+            if isinstance(skipped_ids, list) and skipped_ids:
+                log_warning(
+                    "云中转跳过损坏存储记录，已保留诊断编号: %s",
+                    ",".join(str(item) for item in skipped_ids[:20]),
+                )
             letters: list[dict] = []
             invalid_item = False
             for item in data.get("letters", []):

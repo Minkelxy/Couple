@@ -886,11 +886,18 @@ def api_poll() -> tuple:
         rows = rows[:_POLL_BATCH_LIMIT]
 
     letters = []
+    skipped_ids = []
     # Never advance beyond the snapshot. With no rows, returning poll_until is
     # safe because rows created after it are excluded from this query.
     server_ts = poll_until
     server_cursor = query_cursor if cursor is not None else 0
     for r in rows:
+        if not _stored_letter_is_valid(r):
+            skipped_ids.append(int(r["id"]))
+            server_cursor = r["id"]
+            if r["created_at"] > server_ts:
+                server_ts = r["created_at"]
+            continue
         letters.append({
             "meta": _loads(r["meta"]),
             "content_base64": r["content_b64"],
@@ -934,6 +941,8 @@ def api_poll() -> tuple:
         "server_cursor": str(server_cursor),
         "letters": letters,
     }
+    if skipped_ids:
+        result["skipped_ids"] = skipped_ids
     if has_more:
         result["has_more"] = True
     if cursor_reset:
@@ -994,6 +1003,19 @@ def _loads(s: str):
         return json.loads(s)
     except (json.JSONDecodeError, TypeError):
         return {}
+
+
+def _stored_letter_is_valid(row) -> bool:
+    """Detect rows damaged outside the validated send API before polling."""
+    try:
+        meta = json.loads(row["meta"])
+        if not isinstance(meta, dict):
+            return False
+        if not _validate_payload_b64(row["content_b64"], row["attach_b64"]):
+            return False
+        return isinstance(row["attach_ext"], str) and len(row["attach_ext"]) <= _MAX_ATTACH_EXT_LEN
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return False
 
 
 # ---------- 启动 ----------

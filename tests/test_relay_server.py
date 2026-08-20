@@ -463,6 +463,34 @@ class RelayPollingTests(unittest.TestCase):
             finally:
                 relay_server._DB_PATH = original_db_path
 
+    def test_poll_reports_and_advances_past_corrupt_stored_row(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_db_path = relay_server._DB_PATH
+            relay_server._DB_PATH = Path(tmp) / "letters.db"
+            try:
+                relay_server._init_db()
+                with relay_server._db_session() as conn:
+                    conn.execute(
+                        "INSERT INTO letters "
+                        "(pair_code, message_id, meta, content_b64, attach_b64, attach_ext, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        ("corrupt-test", "bad-1", "{broken", "bad", "", "", relay_server._now_iso()),
+                    )
+                    conn.commit()
+                    row_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+                response = relay_server.app.test_client().get(
+                    "/api/poll",
+                    query_string={"pair_code": "corrupt-test", "cursor": "0"},
+                )
+                payload = response.get_json()
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(payload["letters"], [])
+                self.assertEqual(payload["skipped_ids"], [row_id])
+                self.assertEqual(payload["server_cursor"], str(row_id))
+            finally:
+                relay_server._DB_PATH = original_db_path
+
     def test_cursor_beyond_restored_database_replays_bucket(self):
         client = relay_server.app.test_client()
         response = client.post(

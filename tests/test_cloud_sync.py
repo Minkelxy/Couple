@@ -92,6 +92,28 @@ class CloudSyncParsingTests(unittest.TestCase):
         self.assertEqual(letters, [])
         self.assertEqual(server_ts, "")
 
+    def test_poll_accepts_server_quarantine_marker(self):
+        payload = {
+            "server_cursor": "42",
+            "skipped_ids": [41],
+            "letters": [{
+                "meta": {"type": "letter"},
+                "content_base64": base64.b64encode(b"hello").decode(),
+                "attachment_base64": "",
+            }],
+        }
+        with patch(
+            "DesktopMailbox.cloud_sync.urllib.request.urlopen",
+            return_value=_Response(json.dumps(payload).encode("utf-8")),
+        ), patch.object(
+            self.client, "_build_poll_url", return_value="https://relay.invalid/poll"
+        ), patch("DesktopMailbox.cloud_sync.log_warning") as warning:
+            letters, server_ts = self.client.poll_letters("40")
+
+        self.assertEqual(len(letters), 1)
+        self.assertEqual(server_ts, "42")
+        warning.assert_called_once()
+
     def test_send_rejects_non_json_response(self):
         with patch(
             "DesktopMailbox.cloud_sync.urllib.request.urlopen",
