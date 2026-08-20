@@ -4,7 +4,10 @@ from datetime import datetime, date
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QLabel, QMainWindow, QVBoxLayout, QWidget, QPushButton
+from PySide6.QtWidgets import (
+    QGridLayout, QHBoxLayout, QLabel, QMainWindow, QPushButton,
+    QVBoxLayout, QWidget,
+)
 
 import app_paths
 from DesktopPhotoFrame import config as pf_config
@@ -82,7 +85,8 @@ class StatsWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("统计看板 📊")
-        self.resize(400, 380)
+        self.resize(520, 420)
+        self.setMinimumSize(460, 380)
         # 保存子控件引用，refresh() 时重设数据
         self._cards: list[tuple[QLabel, QLabel]] = []
         self._build_ui()
@@ -93,28 +97,42 @@ class StatsWindow(QMainWindow):
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
         layout.setContentsMargins(28, 24, 28, 24)
-        layout.setSpacing(16)
+        layout.setSpacing(8)
 
-        title = QLabel("我们的数据 📊", self)
-        title.setStyleSheet("font-size:20px; font-weight:600; color:#e65a7a;")
+        title = QLabel("我们的日常", self)
+        title.setStyleSheet("font-size:24px; font-weight:700; color:#263238;")
         layout.addWidget(title)
+        subtitle = QLabel("把一起生活的片段，留在看得见的地方", self)
+        subtitle.setStyleSheet("color:#7b8794; font-size:13px;")
+        layout.addWidget(subtitle)
 
-        # 四张固定卡片（在一起/信件/照片/纪念日），refresh() 重设文字
-        for lbl in ("💕 在一起", "✉ 信件总数", "🖼 照片数量", "🎉 下个纪念日"):
-            card, value_lbl = self._make_card(lbl, "")
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 16, 0, 8)
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(12)
+        cards = (
+            ("在一起", "#e85d75"),
+            ("信件", "#2a9d8f"),
+            ("照片", "#4d7ea8"),
+            ("下个纪念日", "#c58b36"),
+        )
+        for index, (label, accent) in enumerate(cards):
+            card, value_lbl = self._make_card(label, "", accent)
             self._cards.append(value_lbl)
-            layout.addWidget(card)
-
-        layout.addStretch(1)
+            grid.addWidget(card, index // 2, index % 2)
+        layout.addLayout(grid, 1)
 
         close_btn = QPushButton("关闭", self)
         close_btn.setStyleSheet(
-            "QPushButton{background:#e65a7a;color:#fff;border:none;"
-            "border-radius:8px;padding:10px;font-size:14px;}"
-            "QPushButton:hover{background:#d94a6a;}"
+            "QPushButton{background:#263238;color:#fff;border:none;"
+            "border-radius:6px;padding:9px 22px;font-size:14px;}"
+            "QPushButton:hover{background:#37474f;}"
         )
         close_btn.clicked.connect(self.close)
-        layout.addWidget(close_btn)
+        button_row = QHBoxLayout()
+        button_row.addStretch(1)
+        button_row.addWidget(close_btn)
+        layout.addLayout(button_row)
 
     def refresh(self) -> None:
         """重新计算各项统计并更新卡片文本。避免手动调用 __init__ 造成的
@@ -135,17 +153,23 @@ class StatsWindow(QMainWindow):
             else:
                 self._cards[3].setText("未设置")
 
-    def _make_card(self, label: str, value: str):
+    def _make_card(self, label: str, value: str, accent: str):
         card = QWidget(self)
+        card.setObjectName("statCard")
         card.setStyleSheet(
-            "QWidget{background:#fdf2f5; border-radius:10px;}"
+            f"QWidget#statCard{{background:#ffffff;border:1px solid #dfe5ec;"
+            f"border-top:3px solid {accent};border-radius:8px;}}"
         )
         cl = QVBoxLayout(card)
-        cl.setContentsMargins(16, 12, 16, 12)
+        cl.setContentsMargins(16, 14, 16, 12)
+        cl.setSpacing(6)
         lbl = QLabel(label, card)
-        lbl.setStyleSheet("color:#888; font-size:13px; border:none;")
+        lbl.setStyleSheet("color:#7b8794; font-size:13px; border:none;")
         val = QLabel(value, card)
-        val.setStyleSheet("font-size:18px; font-weight:600; color:#333; border:none;")
+        val.setWordWrap(True)
+        val.setStyleSheet("font-size:19px; font-weight:700; color:#263238; border:none;")
         cl.addWidget(lbl)
         cl.addWidget(val)
+        cl.addStretch(1)
+        card.setMinimumHeight(112)
         return card, val

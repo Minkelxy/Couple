@@ -20,7 +20,8 @@ class OnboardingWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("欢迎使用桌面相册 💕")
-        self.resize(480, 420)
+        self.resize(520, 500)
+        self.setMinimumSize(480, 460)
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -28,19 +29,21 @@ class OnboardingWindow(QMainWindow):
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
         root.setContentsMargins(28, 24, 28, 24)
-        root.setSpacing(12)
+        root.setSpacing(10)
 
         # 标题
         title = QLabel("初次见面，简单设置一下", self)
-        title.setStyleSheet("font-size:18px; font-weight:600; color:#e65a7a;")
+        title.setStyleSheet("font-size:24px; font-weight:700; color:#263238;")
         root.addWidget(title)
 
         hint = QLabel("以下设置随时可在「设置」中修改。", self)
-        hint.setStyleSheet("color:#888; font-size:13px;")
+        hint.setStyleSheet("color:#7b8794; font-size:13px;")
         root.addWidget(hint)
 
         # 步骤1：昵称
-        root.addWidget(QLabel("1. 昵称", self))
+        step_one = QLabel("01  昵称", self)
+        step_one.setStyleSheet("font-size:15px; font-weight:700; color:#263238;")
+        root.addWidget(step_one)
         name_row = QHBoxLayout()
         self._my_name = QLineEdit(self)
         self._my_name.setPlaceholderText("我的昵称")
@@ -51,7 +54,9 @@ class OnboardingWindow(QMainWindow):
         root.addLayout(name_row)
 
         # 步骤2：图片目录
-        root.addWidget(QLabel("2. 照片目录（轮播的图片）", self))
+        step_two = QLabel("02  照片目录", self)
+        step_two.setStyleSheet("font-size:15px; font-weight:700; color:#263238;")
+        root.addWidget(step_two)
         dir_row = QHBoxLayout()
         self._image_dir = QLineEdit(str(app_paths.IMAGES_DIR), self)
         browse_btn = QPushButton("浏览…", self)
@@ -61,7 +66,9 @@ class OnboardingWindow(QMainWindow):
         root.addLayout(dir_row)
 
         # 步骤3：局域网同步（可选）
-        root.addWidget(QLabel("3. 局域网同步（可选，跳过则仅本地使用）", self))
+        step_three = QLabel("03  局域网同步", self)
+        step_three.setStyleSheet("font-size:15px; font-weight:700; color:#263238;")
+        root.addWidget(step_three)
         self._sync_check = QCheckBox("启用局域网同步（两台电脑互相寄信）", self)
         self._sync_check.toggled.connect(self._on_sync_toggled)
         root.addWidget(self._sync_check)
@@ -79,13 +86,13 @@ class OnboardingWindow(QMainWindow):
         # 按钮
         btn_row = QHBoxLayout()
         skip_btn = QPushButton("跳过，用默认值", self)
-        skip_btn.setStyleSheet("padding:10px; color:#888;")
+        skip_btn.setStyleSheet("padding:9px 14px; color:#7b8794;")
         skip_btn.clicked.connect(self._on_skip)
         finish_btn = QPushButton("完成 ✅", self)
         finish_btn.setStyleSheet(
-            "QPushButton{background:#e65a7a;color:#fff;border:none;"
-            "border-radius:8px;padding:12px;font-size:15px;}"
-            "QPushButton:hover{background:#d94a6a;}"
+            "QPushButton{background:#e85d75;color:#fff;border:none;"
+            "border-radius:6px;padding:10px 20px;font-size:15px;font-weight:600;}"
+            "QPushButton:hover{background:#d94f68;}"
         )
         finish_btn.clicked.connect(self._on_finish)
         btn_row.addStretch(1)
