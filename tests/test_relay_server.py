@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import sqlite3
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -79,6 +80,33 @@ class RelayPollingTests(unittest.TestCase):
                 self.assertIsNone(
                     relay_server._channel_resolve_pk("bad-channel", "unknown")
                 )
+            finally:
+                relay_server._DB_PATH = original_db_path
+
+    def test_malformed_pairing_member_is_reported_as_expired(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_db_path = relay_server._DB_PATH
+            relay_server._DB_PATH = Path(tmp) / "letters.db"
+            try:
+                relay_server._init_db()
+                with relay_server._db_session() as conn:
+                    conn.execute(
+                        "INSERT INTO pairing_sessions(token, created_at) VALUES (?, ?)",
+                        ("BAD234", time.time()),
+                    )
+                    conn.execute(
+                        "INSERT INTO pairing_members "
+                        "(token, role, created_at, pk_b64, nickname, nonce, confirmed) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        ("BAD234", "host", time.time(), "bad", "host", "nonce", 0),
+                    )
+                    conn.commit()
+
+                response = relay_server.app.test_client().get(
+                    "/api/pairing/poll?token=BAD234&role=host&step=wait_partner"
+                )
+                self.assertEqual(response.status_code, 410)
+                self.assertTrue(response.get_json()["fatal"])
             finally:
                 relay_server._DB_PATH = original_db_path
 

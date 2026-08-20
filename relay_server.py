@@ -319,6 +319,15 @@ def _pairing_expire_locked() -> None:
         conn.commit()
 
 
+def _valid_pairing_slot(slot) -> bool:
+    return (
+        isinstance(slot, dict)
+        and _is_valid_pk_b64(slot.get("pk_b64"))
+        and isinstance(slot.get("nickname", ""), str)
+        and isinstance(slot.get("nonce"), str)
+    )
+
+
 def _load_pairing(token: str) -> dict | None:
     with _db_session() as conn:
         members = conn.execute(
@@ -334,12 +343,14 @@ def _load_pairing(token: str) -> dict | None:
             }
             for row in members:
                 if row["role"] in ("host", "guest"):
-                    state[row["role"]] = {
+                    slot = {
                         "pk_b64": row["pk_b64"],
                         "nickname": row["nickname"],
                         "nonce": row["nonce"],
                         "confirmed": bool(row["confirmed"]),
                     }
+                    if _valid_pairing_slot(slot):
+                        state[row["role"]] = slot
             return state
         row = conn.execute(
             "SELECT created_at, host, guest FROM pairing_sessions WHERE token = ?",
@@ -355,7 +366,7 @@ def _load_pairing(token: str) -> dict | None:
                 value = json.loads(raw)
             except (TypeError, json.JSONDecodeError):
                 value = None
-            if isinstance(value, dict):
+            if _valid_pairing_slot(value):
                 state[role] = value
     return state
 
