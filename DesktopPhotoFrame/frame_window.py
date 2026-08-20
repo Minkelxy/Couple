@@ -174,6 +174,17 @@ class KenBurnsLabel(QWidget):
         else:
             p.drawPixmap(self._offset, self._pixmap)
 
+        # A subtle edge keeps the rounded frame legible against bright wallpaper.
+        p.setClipping(False)
+        p.setBrush(Qt.NoBrush)
+        p.setPen(QPen(QColor(255, 255, 255, 105), 1))
+        inset = 0.5
+        p.drawRoundedRect(
+            QRectF(inset, inset, self.width() - 1, self.height() - 1),
+            self._radius,
+            self._radius,
+        )
+
     def resizeEvent(self, _e) -> None:
         self.update()
 
