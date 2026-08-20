@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from DesktopMailbox.sync import SyncHub, _recv_exact
+from DailyCheckin import checkin_window
 import identity
 from common_utils import AtomicJsonStore
 
@@ -302,6 +303,60 @@ class SyncTransportTests(unittest.TestCase):
 
         self.assertEqual(hub._cloud_last_ts, "old-cursor")
         hub._save_cursor.assert_not_called()
+        hub._cloud_schedule_poll.assert_called_once()
+
+    def test_cloud_storage_failure_retries_real_partner_event(self):
+        def dispatch(_event_type, meta, content, attachment, att_ext):
+            checkin_window.handle_partner_event(meta, content, attachment, att_ext)
+
+        hub = SimpleNamespace(
+            _my_id="local-id",
+            _stopped=False,
+            _cloud_client=SimpleNamespace(
+                poll_letters=Mock(return_value=(
+                    [{
+                        "meta": {
+                            "type": "checkin",
+                            "message_id": "checkin-retry",
+                            "date": "2026-02-20",
+                            "mood": 5,
+                        },
+                        "content": "",
+                        "attachment": b"",
+                        "attachment_ext": "",
+                    }],
+                    "new-cursor",
+                )),
+            ),
+            _cloud_last_ts="old-cursor",
+            _save_cursor=Mock(),
+            _cloud_schedule_poll=Mock(),
+            _message_seen_store=Mock(),
+            _message_seen_lock=threading.Lock(),
+            _seen_message_ids=collections.OrderedDict(),
+            _pending_message_ids=set(),
+            _message_seen_lru_max=16,
+            event_received=SimpleNamespace(emit=dispatch),
+        )
+        hub._check_and_record_message_id = MethodType(
+            SyncHub._check_and_record_message_id, hub
+        )
+        hub._persist_message_ids = MethodType(SyncHub._persist_message_ids, hub)
+        hub._forget_message_id = MethodType(SyncHub._forget_message_id, hub)
+        hub._commit_message_id = MethodType(SyncHub._commit_message_id, hub)
+        hub.on_received = MethodType(SyncHub.on_received, hub)
+
+        with patch.object(identity, "get_status", return_value=SimpleNamespace(paired=False)), \
+                patch.object(
+                    checkin_window.store,
+                    "add_partner_record",
+                    side_effect=OSError("disk full"),
+                ), patch("DesktopMailbox.sync.log_exception"):
+            SyncHub._cloud_poll_loop(hub)
+
+        self.assertEqual(hub._cloud_last_ts, "old-cursor")
+        hub._save_cursor.assert_not_called()
+        self.assertNotIn("checkin-retry", hub._seen_message_ids)
         hub._cloud_schedule_poll.assert_called_once()
 
     def test_paired_channel_starts_cloud_without_legacy_pair_code(self):

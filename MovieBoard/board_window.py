@@ -64,6 +64,7 @@ def handle_partner_event(
         )
     except OSError:
         log_exception("写入对方影视状态失败: %s", movie_id)
+        raise
 
 
 class _SearchWorker(QThread):

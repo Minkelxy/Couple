@@ -771,3 +771,4 @@ def handle_partner_event(
         config.add_partner_album_path(str(shared_dir))
     except OSError:
         log_warning("注册对方共享相册失败: %s", shared_dir)
+        raise

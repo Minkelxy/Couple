@@ -102,6 +102,7 @@ def handle_partner_event(meta: dict, content: str, attachment: bytes,
         store.add_partner_city(city, lat, lng, note, photo_filename)
     except OSError:
         log_warning("写入对方旅行记录失败: %s", city)
+        raise
 
 
 class _EditCityDialog(QDialog):

@@ -108,7 +108,7 @@ def handle_partner_event(meta: dict, content: str, attachment: bytes,
         store.add_partner_record(date_str, mood, note, image_path)
     except OSError:
         log_warning("写入对方打卡记录失败: %s", date_str)
-        return
+        raise
     win = _active_window() if _active_window is not None else None
     if win is not None:
         win.refresh_partner_sidebar()
