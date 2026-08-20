@@ -217,7 +217,7 @@ class SettingsWindow(QMainWindow):
         tab = QWidget()
         layout = QFormLayout(tab)
 
-        self._sync_enabled = QCheckBox("启用局域网同步")
+        self._sync_enabled = QCheckBox("启用局域网监听")
         layout.addRow(self._sync_enabled)
 
         # 同步模式单选
@@ -253,9 +253,13 @@ class SettingsWindow(QMainWindow):
         self._cloud_server = QLineEdit()
         self._cloud_server.setPlaceholderText("https://couple-relay.example.com")
         cloud_layout.addRow("服务器地址:", self._cloud_server)
+        self._cloud_pairing_status = QLabel()
+        self._cloud_pairing_status.setWordWrap(True)
+        self._cloud_pairing_status.setStyleSheet("color:#666; font-size:12px;")
+        cloud_layout.addRow("公钥配对:", self._cloud_pairing_status)
         self._cloud_pair_code = QLineEdit()
-        self._cloud_pair_code.setPlaceholderText("双方填相同码")
-        cloud_layout.addRow("配对码:", self._cloud_pair_code)
+        self._cloud_pair_code.setPlaceholderText("仅旧版客户端迁移时使用")
+        cloud_layout.addRow("旧版配对码:", self._cloud_pair_code)
         layout.addRow(self._cloud_group)
 
         # 根据模式显示/隐藏云配置
@@ -452,12 +456,22 @@ class SettingsWindow(QMainWindow):
             self._id_nick_me.setText(nick[:20])
         # 对方信息
         if status.paired:
+            self._cloud_pairing_status.setText(
+                f"已完成公钥配对，通道 ID：{status.channel_id or '未知'}。"
+                "正常使用不需要填写旧版配对码。"
+            )
+            self._cloud_pairing_status.setStyleSheet("color:#2e7d32; font-size:12px;")
             self._id_them_nick.setText(status.partner_nickname or "对方")
             self._id_them_fp.setText(status.partner_fingerprint or "")
             self._id_safety.setText(status.safety_code or "")
             self._id_channel.setText(status.channel_id or "")
             self._btn_reset_partner.setEnabled(True)
         else:
+            self._cloud_pairing_status.setText(
+                "尚未完成公钥配对。请先填写服务器地址并保存，"
+                "再到「联机身份」页完成一次配对。"
+            )
+            self._cloud_pairing_status.setStyleSheet("color:#a15c00; font-size:12px;")
             self._id_them_nick.setText("")
             self._id_them_fp.setText("")
             self._id_safety.setText("")
