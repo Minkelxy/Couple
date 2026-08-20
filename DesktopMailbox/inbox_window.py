@@ -174,14 +174,14 @@ class InboxWindow(QMainWindow):
         deliver = datetime.fromisoformat(meta["deliver_at"]).strftime("%Y-%m-%d %H:%M")
         html = (
             f"<h3 style='margin:0'>{_escape(meta['title'])}</h3>"
-            f"<p style='color:#888;margin:2px 0 8px'>"
+            f"<p style='color:#7b8794;margin:2px 0 8px'>"
             f"{_escape(meta['author'])} → {_escape(meta['recipient'])} · 写于 {_escape(created)}</p>"
-            f"<p style='color:#e65a7a;margin:2px 0 8px'>送达时间：{_escape(deliver)}</p>"
+            f"<p style='color:#d84f68;margin:2px 0 8px'>送达时间：{_escape(deliver)}</p>"
             f"<pre style='font-family:inherit;white-space:pre-wrap;margin:0'>"
             f"{_escape(content)}</pre>"
         )
         if meta["has_attachment"]:
-            html += "<p style='color:#888;margin-top:8px'>📎 含附件</p>"
+            html += "<p style='color:#7b8794;margin-top:8px'>📎 含附件</p>"
         self._preview.setHtml(html)
 
     def _open_current(self) -> None:

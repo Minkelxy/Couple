@@ -44,6 +44,16 @@ def apply_theme(app: QApplication) -> None:
         QPushButton:disabled {
             color: #aab3bd; background: #edf0f3; border-color: #e1e5ea;
         }
+        QToolButton {
+            min-height: 28px; padding: 3px 8px; border: 1px solid transparent;
+            border-radius: 5px; background: transparent; color: #52616d;
+        }
+        QToolButton:hover { background: #fff0f3; color: #d84f68; }
+        QScrollArea { border: none; background: transparent; }
+        QStatusBar {
+            min-height: 24px; padding: 2px 8px; border-top: 1px solid #dfe5ec;
+            background: #eef2f6; color: #687582;
+        }
         QTabWidget::pane {
             border: 1px solid #dfe5ec; border-radius: 8px; background: #ffffff;
             top: -1px;
