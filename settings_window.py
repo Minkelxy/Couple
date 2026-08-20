@@ -511,7 +511,7 @@ class SettingsWindow(QMainWindow):
             f"请通过电话/微信等<u>安全渠道</u>让对方打开「设置 → 🔐 联机身份 → 安全码」，<br>"
             f"并念一下屏幕上的 6 位数字。<br><br>"
             f"你这边显示的安全码为：<br>"
-            f"<div style='font-size:36px;font-weight:900;color:#e65a7a;"
+            f"<div style='font-size:36px;font-weight:900;color:#e85d75;"
             f"letter-spacing:12px;text-align:center;margin:12px 0;'>{code}</div>"
             f"如果两边数字<b>完全一样</b>，说明你们之间没有中间人，可以放心使用。<br>"
             f"如果<b>不一样</b>，说明你们之间有人被转发了消息，请到设置里「解除配对」后重新开始。"
@@ -601,7 +601,7 @@ class SettingsWindow(QMainWindow):
             if p.token:
                 self._pair_stage.setText(
                     "正在等待对方输入配对码……<br>"
-                    f"<div style='font-size:48px;font-weight:900;color:#e65a7a;"
+                    f"<div style='font-size:48px;font-weight:900;color:#e85d75;"
                     f"letter-spacing:24px;text-align:center;margin:16px 0;'>{p.token}</div>"
                     "<b>请把这 6 位数字告诉对方</b>（微信/电话都可以，它是一次性短期胶水，泄漏也没用），"
                     "对方在设置里选「② 输入对方的 6 位配对码」即可。"
@@ -617,7 +617,7 @@ class SettingsWindow(QMainWindow):
                 f"已收到「{nick}」的配对请求。<br><br>"
                 f"请让对方打开「设置 → 🔐 联机身份 → 安全码」念一下他屏幕上的 6 位数字，<br>"
                 f"你这边显示的安全码为：<br>"
-                f"<div style='font-size:36px;font-weight:900;color:#e65a7a;"
+                f"<div style='font-size:36px;font-weight:900;color:#e85d75;"
                 f"letter-spacing:12px;text-align:center;margin:12px 0;'>{safety}</div>"
                 f"两边数字<b>完全一样吗？</b>"
             )
