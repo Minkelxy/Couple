@@ -282,7 +282,10 @@ def _channel_members(channel_id: str) -> tuple[str, str] | None:
         ).fetchone()
         if not row:
             return None
-        return row["member_a_pk"], row["member_b_pk"]
+        members = (row["member_a_pk"], row["member_b_pk"])
+        if not all(_is_valid_pk_b64(member) for member in members):
+            return None
+        return members
 
 
 def _channel_resolve_pk(channel_id: str, pk_fp: str) -> str | None:

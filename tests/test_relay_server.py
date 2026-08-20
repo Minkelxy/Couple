@@ -67,6 +67,21 @@ class RelayPollingTests(unittest.TestCase):
         self.assertEqual(response.headers["Cache-Control"], "no-store")
         self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
 
+    def test_malformed_channel_members_are_not_used_for_authentication(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_db_path = relay_server._DB_PATH
+            relay_server._DB_PATH = Path(tmp) / "letters.db"
+            try:
+                relay_server._init_db()
+                relay_server._save_channel("bad-channel", "not-a-key", "also-bad")
+
+                self.assertIsNone(relay_server._channel_members("bad-channel"))
+                self.assertIsNone(
+                    relay_server._channel_resolve_pk("bad-channel", "unknown")
+                )
+            finally:
+                relay_server._DB_PATH = original_db_path
+
     def test_pairing_endpoints_reject_non_object_json(self):
         client = relay_server.app.test_client()
 
