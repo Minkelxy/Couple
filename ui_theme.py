@@ -1,12 +1,29 @@
 """Shared visual language for the CoupleSuite desktop application."""
 from __future__ import annotations
 
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QPalette
 from PySide6.QtWidgets import QApplication
+
+
+def _install_font(app: QApplication) -> None:
+    """Choose a CJK-capable UI font when the platform provides one."""
+    available = set(QFontDatabase.families())
+    for family in (
+        "Microsoft YaHei UI",
+        "Microsoft YaHei",
+        "Noto Sans CJK SC",
+        "WenQuanYi Zen Hei",
+        "Segoe UI",
+    ):
+        if family in available:
+            app.setFont(QFont(family, 10))
+            return
+    app.setFont(QFont("Sans Serif", 10))
 
 
 def apply_theme(app: QApplication) -> None:
     """Install the application palette and shared widget styling."""
+    _install_font(app)
     palette = QPalette()
     palette.setColor(QPalette.ColorRole.Window, QColor("#f5f7fa"))
     palette.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))
