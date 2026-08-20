@@ -53,7 +53,9 @@ python -m PyInstaller couple_suite.spec --noconfirm
 
 ### 2. 云中转（cloud）
 
-部署一个轻量 HTTP 中转服务器（`relay_server.py`），双机通过配对码收发。
+部署一个轻量 HTTP 中转服务器（`relay_server.py`）。新部署推荐由两台 Windows
+客户端通过「设置 → 同步 → 公钥配对」建立通道；配对完成后使用 `channel_id`
+和 Ed25519 签名通信，不需要共享 `pair_code`。
 
 ```bash
 pip install -r relay-requirements.txt
@@ -82,6 +84,13 @@ sudo systemctl enable --now couple-relay-backup.timer
 
 服务只监听 `127.0.0.1:5000`，公网访问应经过 nginx + HTTPS；`/health` 可用于 systemd 外部监控和 nginx 上游检查。备份 timer 每日使用 SQLite online backup 创建一致副本，默认保留最近 14 份。生产环境不要开启 legacy `pair_code` 模式。
 
+两台 Windows 客户端的配置流程：
+
+1. 两端将同步模式设为 `cloud` 或 `both`，填写同一个 HTTPS relay URL。
+2. 一端点击“发起配对”，另一端点击“加入配对”，输入同一个 6 位 token。
+3. 两端核对安全码并确认，完成后客户端会保存通道和身份信息。
+4. 保持 relay 的 SQLite 数据库和客户端 `%APPDATA%\\CoupleSuite\\config\\identity\\` 目录持久化。
+
 恢复备份前必须停止 relay，避免运行中的连接重新生成旧 WAL 文件：
 
 ```bash
@@ -94,11 +103,14 @@ sudo systemctl start couple-relay
 Ubuntu 服务器建议把 `COUPLE_RELAY_DB` 指向持久化数据盘，并使用 nginx + HTTPS 反向代理。配对会话和信件都保存在 SQLite；配对状态不依赖单个 Gunicorn worker，服务重载或 worker 切换不会中断两台 Windows 客户端的配对流程。
 旧版 `pair_code` 接口默认关闭；仅在迁移旧客户端时临时设置 `COUPLE_RELAY_ALLOW_LEGACY_PAIR_CODE=1`，迁移完成后应立即移除。
 
-接口约定：
+接口约定（公钥身份模式）：
 
 - `POST /api/send` — 发送信件
-- `GET /api/poll?pair_code={code}&since={ts}` — 增量拉取
+- `GET /api/poll?channel_id={id}&cursor={cursor}` — 增量拉取
 - `GET /health` — 健康检查
+
+旧版 `pair_code` 接口仅用于迁移旧客户端，必须显式设置
+`COUPLE_RELAY_ALLOW_LEGACY_PAIR_CODE=1`，迁移完成后立即关闭。
 
 详见 [relay_server.py](relay_server.py) 文档字符串。生产环境建议套 nginx + HTTPS。
 
