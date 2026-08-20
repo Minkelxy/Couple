@@ -19,6 +19,7 @@ DB_PATH = app_paths.MOVIES_DIR / "movies.db"
 STATUS_WANT = "want"
 STATUS_WATCHING = "watching"
 STATUS_WATCHED = "watched"
+_VALID_STATUSES = {STATUS_WANT, STATUS_WATCHING, STATUS_WATCHED}
 
 # who -> 列名，白名单避免 SQL 注入
 _RATING_COLS = {"mine": "rating_mine", "partner": "rating_partner"}
@@ -78,6 +79,8 @@ def add(
 
 
 def update_status(movie_id: int, status: str) -> None:
+    if status not in _VALID_STATUSES:
+        return
     with _cursor() as conn:
         conn.execute(
             "UPDATE movies SET status=? WHERE id=?", (status, movie_id)
@@ -87,7 +90,7 @@ def update_status(movie_id: int, status: str) -> None:
 def update_rating(movie_id: int, who: str, rating: int) -> None:
     """who 为 'mine' 或 'partner'。非法值忽略。"""
     col = _RATING_COLS.get(who)
-    if not col:
+    if not col or isinstance(rating, bool) or not isinstance(rating, int) or not 1 <= rating <= 10:
         return
     with _cursor() as conn:
         conn.execute(
@@ -98,7 +101,7 @@ def update_rating(movie_id: int, who: str, rating: int) -> None:
 def update_review(movie_id: int, who: str, review: str) -> None:
     """who 为 'mine' 或 'partner'。非法值忽略。"""
     col = _REVIEW_COLS.get(who)
-    if not col:
+    if not col or not isinstance(review, str):
         return
     with _cursor() as conn:
         conn.execute(
