@@ -784,13 +784,26 @@ def api_poll() -> tuple:
     # Bound the query to a timestamp captured before opening the DB snapshot.
     # Messages arriving after this point must be left for the next poll.
     poll_until = _now_iso()
+    cursor_reset = False
+    query_cursor = cursor
     with _db_session() as conn:
         if cursor is not None:
+            max_row = conn.execute(
+                "SELECT COALESCE(MAX(id), 0) AS max_id FROM letters WHERE pair_code = ?",
+                (bucket_key,),
+            ).fetchone()
+            max_id = int(max_row["max_id"] or 0)
+            # A restored/trimmed SQLite database can have a lower max id than
+            # the client's persisted cursor. Replay this bucket from the
+            # beginning; local message_id idempotency makes the replay safe.
+            if cursor > max_id:
+                query_cursor = 0
+                cursor_reset = True
             rows = conn.execute(
                 "SELECT id, meta, content_b64, attach_b64, attach_ext, created_at "
                 "FROM letters WHERE pair_code = ? AND id > ? "
                 "AND created_at <= ? ORDER BY id ASC LIMIT ?",
-                (bucket_key, cursor, poll_until, _POLL_BATCH_LIMIT + 1),
+                (bucket_key, query_cursor, poll_until, _POLL_BATCH_LIMIT + 1),
             ).fetchall()
         elif since:
             rows = conn.execute(
@@ -816,7 +829,7 @@ def api_poll() -> tuple:
     # Never advance beyond the snapshot. With no rows, returning poll_until is
     # safe because rows created after it are excluded from this query.
     server_ts = poll_until
-    server_cursor = cursor if cursor is not None else 0
+    server_cursor = query_cursor if cursor is not None else 0
     for r in rows:
         letters.append({
             "meta": _loads(r["meta"]),
@@ -863,6 +876,8 @@ def api_poll() -> tuple:
     }
     if has_more:
         result["has_more"] = True
+    if cursor_reset:
+        result["cursor_reset"] = True
     return jsonify(result), 200
 
 

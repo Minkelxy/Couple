@@ -382,6 +382,31 @@ class RelayPollingTests(unittest.TestCase):
             finally:
                 relay_server._DB_PATH = original_db_path
 
+    def test_cursor_beyond_restored_database_replays_bucket(self):
+        client = relay_server.app.test_client()
+        response = client.post(
+            "/api/send",
+            json={
+                "pair_code": "restore-test",
+                "meta": {"type": "letter", "message_id": "restore-message"},
+                "content_base64": "cmVzdG9yZQ==",
+                "attachment_base64": "",
+                "attachment_ext": "",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+
+        replay = client.get(
+            "/api/poll",
+            query_string={"pair_code": "restore-test", "cursor": "999999"},
+        )
+        self.assertEqual(replay.status_code, 200)
+        payload = replay.get_json()
+        self.assertTrue(payload["cursor_reset"])
+        self.assertEqual([item["meta"]["message_id"] for item in payload["letters"]], [
+            "restore-message",
+        ])
+
 
 if __name__ == "__main__":
     unittest.main()
