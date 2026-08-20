@@ -72,6 +72,26 @@ class CloudSyncParsingTests(unittest.TestCase):
         self.assertEqual(server_ts, "")
         self.assertEqual(len(letters), 1)
 
+    def test_poll_does_not_advance_cursor_past_invalid_item(self):
+        payload = {
+            "server_cursor": "42",
+            "letters": [{
+                "meta": {},
+                "content_base64": "not-base64",
+                "attachment_base64": "",
+            }],
+        }
+        with patch(
+            "DesktopMailbox.cloud_sync.urllib.request.urlopen",
+            return_value=_Response(json.dumps(payload).encode("utf-8")),
+        ), patch.object(
+            self.client, "_build_poll_url", return_value="https://relay.invalid/poll"
+        ), patch("DesktopMailbox.cloud_sync.log_warning"):
+            letters, server_ts = self.client.poll_letters("41")
+
+        self.assertEqual(letters, [])
+        self.assertEqual(server_ts, "")
+
     def test_send_rejects_non_json_response(self):
         with patch(
             "DesktopMailbox.cloud_sync.urllib.request.urlopen",

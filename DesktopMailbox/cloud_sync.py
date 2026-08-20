@@ -128,15 +128,21 @@ class CloudSyncClient:
             server_cursor = _normalize_cursor(data.get("server_cursor"))
             server_ts = server_cursor or _normalize_server_ts(data.get("server_ts", ""))
             letters: list[dict] = []
+            invalid_item = False
             for item in data.get("letters", []):
                 try:
                     parsed = self._parse_one_inbound(item)
                     if parsed is None:
-                        continue  # 被身份校验丢弃
+                        invalid_item = True
+                        continue
                     letters.append(parsed)
                 except Exception:
-                    log_exception("云中转坏信件解析失败，已跳过")
+                    invalid_item = True
+                    log_exception("云中转坏信件解析失败，保留旧游标重试")
                     continue
+            if invalid_item:
+                log_warning("云中转批次包含无效信件，保留旧游标等待重试")
+                return [], ""
             return letters, server_ts
         except Exception:
             log_exception("云同步轮询失败")
