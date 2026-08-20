@@ -107,7 +107,7 @@ class _MovieItemWidget(QWidget):
         poster = QLabel(self)
         poster.setFixedSize(60, 80)
         poster.setAlignment(Qt.AlignCenter)
-        poster.setStyleSheet("background:#eee; border-radius:6px; color:#aaa;")
+        poster.setStyleSheet("background:#eef2f6; border-radius:6px; color:#7b8794;")
         pm = self._load_poster(movie.get("poster_path", ""))
         if pm:
             poster.setPixmap(pm)
@@ -121,12 +121,12 @@ class _MovieItemWidget(QWidget):
         info_lay.setSpacing(4)
 
         title = QLabel(movie.get("title", ""), info)
-        title.setStyleSheet("font-size:14px; font-weight:600; color:#333;")
+        title.setStyleSheet("font-size:14px; font-weight:700; color:#263238;")
         title.setWordWrap(True)
         info_lay.addWidget(title)
 
         rating = QLabel(self._rating_text(movie), info)
-        rating.setStyleSheet("font-size:12px; color:#e65a7a;")
+        rating.setStyleSheet("font-size:12px; color:#d84f68;")
         info_lay.addWidget(rating)
 
         # 对方状态徽章
@@ -134,7 +134,7 @@ class _MovieItemWidget(QWidget):
         if badge_text:
             ps_lbl = QLabel(badge_text, info)
             ps_lbl.setStyleSheet(
-                "font-size:11px; color:#7a5a8a; background:#f0e6f5;"
+                "font-size:11px; color:#52616d; background:#eef5f7;"
                 "border-radius:4px; padding:1px 6px;"
             )
             info_lay.addWidget(ps_lbl)
@@ -224,8 +224,8 @@ class _RatingDialog(QDialog):
         btns.addStretch(1)
         cancel = QPushButton("取消", self)
         cancel.setStyleSheet(
-            "QPushButton{background:#eee;color:#333;border:none;"
-            "border-radius:8px;padding:8px 16px;}"
+            "QPushButton{background:#ffffff;color:#52616d;border:1px solid #d7dee8;"
+            "border-radius:6px;padding:8px 16px;}"
         )
         cancel.clicked.connect(self.reject)
         ok = QPushButton("保存", self)
@@ -244,7 +244,7 @@ class _RatingDialog(QDialog):
         row = QHBoxLayout()
         row.addWidget(QLabel("评分：", page))
         val = QLabel(str(rating) if isinstance(rating, int) else "7", page)
-        val.setStyleSheet("color:#e65a7a; font-weight:600;")
+        val.setStyleSheet("color:#d84f68; font-weight:700;")
         row.addWidget(val)
         slider = QSlider(Qt.Horizontal, page)
         slider.setMinimum(1)

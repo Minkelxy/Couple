@@ -134,12 +134,12 @@ class CheckinEditor(QDialog):
         layout.setSpacing(14)
 
         title = QLabel(f"📅 {self._date}", self)
-        title.setStyleSheet("font-size:16px; font-weight:600; color:#e65a7a;")
+        title.setStyleSheet("font-size:20px; font-weight:700; color:#263238;")
         layout.addWidget(title)
 
         # 心情选择
         mood_label = QLabel("今天心情如何？", self)
-        mood_label.setStyleSheet("font-size:14px; color:#555;")
+        mood_label.setStyleSheet("font-size:14px; color:#52616d;")
         layout.addWidget(mood_label)
 
         mood_row = QHBoxLayout()
@@ -151,10 +151,10 @@ class CheckinEditor(QDialog):
             btn.setFixedSize(48, 48)
             btn.setCheckable(True)
             btn.setStyleSheet(
-                "QPushButton{font-size:24px; border:2px solid #eee;"
+                "QPushButton{font-size:24px; border:2px solid #dfe5ec;"
                 "border-radius:24px; background:#fff;}"
-                "QPushButton:checked{border:2px solid #e65a7a; background:#fdf2f5;}"
-                "QPushButton:hover{border:2px solid #f0a0b0;}"
+                "QPushButton:checked{border:2px solid #e85d75; background:#fff0f3;}"
+                "QPushButton:hover{border:2px solid #e8a0ad;}"
             )
             self._mood_group.addButton(btn)
             self._mood_buttons[mood_val] = btn
@@ -165,15 +165,15 @@ class CheckinEditor(QDialog):
 
         # 一句话
         text_label = QLabel("一句话记录：", self)
-        text_label.setStyleSheet("font-size:14px; color:#555;")
+        text_label.setStyleSheet("font-size:14px; color:#52616d;")
         layout.addWidget(text_label)
         self._text_edit = QLineEdit(self)
         self._text_edit.setMaxLength(100)
         self._text_edit.setPlaceholderText("今天最想说的一句话…（最多 100 字）")
         self._text_edit.setStyleSheet(
-            "QLineEdit{border:1px solid #ddd; border-radius:6px;"
-            "padding:8px; font-size:14px;}"
-            "QLineEdit:focus{border:1px solid #e65a7a;}"
+            "QLineEdit{border:1px solid #d7dee8; border-radius:6px;"
+            "padding:8px; font-size:14px;background:#ffffff;}"
+            "QLineEdit:focus{border:1px solid #e85d75;}"
         )
         layout.addWidget(self._text_edit)
 
@@ -181,14 +181,14 @@ class CheckinEditor(QDialog):
         img_row = QHBoxLayout()
         self._img_btn = QPushButton("📷 选择图片", self)
         self._img_btn.setStyleSheet(
-            "QPushButton{background:#fdf2f5; color:#e65a7a;"
-            "border:1px solid #e65a7a; border-radius:6px; padding:8px 16px;"
+            "QPushButton{background:#ffffff; color:#d84f68;"
+            "border:1px solid #e8a0ad; border-radius:6px; padding:8px 16px;"
             "font-size:13px;}"
-            "QPushButton:hover{background:#fce4ea;}"
+            "QPushButton:hover{background:#fff0f3;}"
         )
         self._img_btn.clicked.connect(self._pick_image)
         self._img_label = QLabel("未选择", self)
-        self._img_label.setStyleSheet("color:#999; font-size:12px;")
+        self._img_label.setStyleSheet("color:#7b8794; font-size:12px;")
         img_row.addWidget(self._img_btn)
         img_row.addWidget(self._img_label, 1)
         layout.addLayout(img_row)
@@ -198,9 +198,9 @@ class CheckinEditor(QDialog):
         # 保存按钮
         self._save_btn = QPushButton("保存 💾", self)
         self._save_btn.setStyleSheet(
-            "QPushButton{background:#e65a7a; color:#fff; border:none;"
-            "border-radius:8px; padding:10px; font-size:15px;}"
-            "QPushButton:hover{background:#d94a6a;}"
+            "QPushButton{background:#e85d75; color:#fff; border:none;"
+            "border-radius:6px; padding:10px; font-size:15px;font-weight:600;}"
+            "QPushButton:hover{background:#d94f68;}"
         )
         self._save_btn.clicked.connect(self._save)
         layout.addWidget(self._save_btn)

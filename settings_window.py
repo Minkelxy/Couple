@@ -272,7 +272,7 @@ class SettingsWindow(QMainWindow):
         cloud_layout.addRow("服务器地址:", self._cloud_server)
         self._cloud_pairing_status = QLabel()
         self._cloud_pairing_status.setWordWrap(True)
-        self._cloud_pairing_status.setStyleSheet("color:#666; font-size:12px;")
+        self._cloud_pairing_status.setStyleSheet("color:#7b8794; font-size:12px;")
         cloud_layout.addRow("公钥配对:", self._cloud_pairing_status)
         self._cloud_pair_code = QLineEdit()
         self._cloud_pair_code.setPlaceholderText("仅旧版客户端迁移时使用")
@@ -285,7 +285,7 @@ class SettingsWindow(QMainWindow):
         self._mode_both.toggled.connect(self._update_cloud_visibility)
 
         hint = QLabel("提示：两台电脑互填对方 IP 即可互相寄信。端口默认 52014。")
-        hint.setStyleSheet("color:#888; font-size:12px;")
+        hint.setStyleSheet("color:#7b8794; font-size:12px;")
         hint.setWordWrap(True)
         layout.addRow(hint)
 
@@ -413,7 +413,7 @@ class SettingsWindow(QMainWindow):
         pv = QVBoxLayout(grp_pair)
         tip = QLabel("配对是一次性的，完成后你们两台电脑会互相认出彼此，不需要再填任何识别码。"
                      "<br>两台电脑分别选择一个角色：一台发起（获得 6 位配对码），另一台输入（输入那 6 位码）。")
-        tip.setWordWrap(True); tip.setStyleSheet("color:#666;")
+        tip.setWordWrap(True); tip.setStyleSheet("color:#52616d;")
         pv.addWidget(tip)
         row_btns = QHBoxLayout()
         self._btn_host = QPushButton("① 发起配对（我这边显示 6 位码）")
@@ -427,7 +427,10 @@ class SettingsWindow(QMainWindow):
         pv.addLayout(row_btns)
         # 状态行
         self._pair_stage = QLabel("—— 请点击上面的按钮开始 ——")
-        self._pair_stage.setStyleSheet("padding:8px;border-radius:6px;background:#f6f7fb;color:#333;")
+        self._pair_stage.setStyleSheet(
+            "padding:10px;border:1px solid #dfe5ec;border-radius:6px;"
+            "background:#f7f9fb;color:#263238;"
+        )
         self._pair_stage.setWordWrap(True)
         pv.addWidget(self._pair_stage)
         self._pair_progress = QProgressBar()
@@ -477,7 +480,7 @@ class SettingsWindow(QMainWindow):
                 f"已完成公钥配对，通道 ID：{status.channel_id or '未知'}。"
                 "正常使用不需要填写旧版配对码。"
             )
-            self._cloud_pairing_status.setStyleSheet("color:#2e7d32; font-size:12px;")
+            self._cloud_pairing_status.setStyleSheet("color:#2f7d68; font-size:12px;")
             self._id_them_nick.setText(status.partner_nickname or "对方")
             self._id_them_fp.setText(status.partner_fingerprint or "")
             self._id_safety.setText(status.safety_code or "")
@@ -488,7 +491,7 @@ class SettingsWindow(QMainWindow):
                 "尚未完成公钥配对。请先填写服务器地址并保存，"
                 "再到「联机身份」页完成一次配对。"
             )
-            self._cloud_pairing_status.setStyleSheet("color:#a15c00; font-size:12px;")
+            self._cloud_pairing_status.setStyleSheet("color:#a56d2f; font-size:12px;")
             self._id_them_nick.setText("")
             self._id_them_fp.setText("")
             self._id_safety.setText("")
