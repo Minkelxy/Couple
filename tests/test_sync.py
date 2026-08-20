@@ -257,6 +257,44 @@ class SyncTransportTests(unittest.TestCase):
         write_letter.assert_called_once()
         hub.letter_received.emit.assert_called_once_with("letter-1")
 
+    def test_lan_storage_failure_releases_signature_for_retry(self):
+        hub = SimpleNamespace(
+            _my_id="local-id",
+            _sig_lock=threading.Lock(),
+            _seen_sigs=collections.OrderedDict(),
+            _sig_lru_max=16,
+            letter_received=Mock(),
+        )
+        hub._check_and_record_sig = MethodType(SyncHub._check_and_record_sig, hub)
+        hub._forget_sig = MethodType(SyncHub._forget_sig, hub)
+        meta = {"type": "letter", "sig_b64": "sig-lan-retry"}
+
+        with patch.object(
+            identity,
+            "get_status",
+            return_value=SimpleNamespace(paired=True),
+        ), patch.object(
+            identity,
+            "ensure_identity",
+            return_value=(b"local-public-key", object()),
+        ), patch.object(
+            identity,
+            "_pk_fp",
+            return_value="other-fingerprint",
+        ), patch.object(
+            identity,
+            "verify_message",
+            return_value=True,
+        ), patch(
+            "DesktopMailbox.sync.letter_store.write_letter",
+            side_effect=[OSError("disk full"), {"id": "letter-1"}],
+        ):
+            with self.assertRaises(OSError):
+                SyncHub.on_received(hub, meta, "hello", b"", "")
+            SyncHub.on_received(hub, meta, "hello", b"", "")
+
+        hub.letter_received.emit.assert_called_once_with("letter-1")
+
     def test_cloud_cursor_is_persisted_atomically(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = AtomicJsonStore(Path(tmp) / "cursor.json", {})

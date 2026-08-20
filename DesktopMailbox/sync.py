@@ -629,6 +629,9 @@ class SyncHub(QObject):
                 self.event_received.emit(msg_type, meta, content, attachment or b"", att_ext)
             except Exception:
                 self._forget_message_id(message_id)
+                forget_sig = getattr(self, "_forget_sig", None)
+                if forget_sig is not None:
+                    forget_sig(sig_b64)
                 raise
             self._commit_message_id(message_id)
             return
@@ -636,17 +639,23 @@ class SyncHub(QObject):
             deliver_at = datetime.fromisoformat(meta["deliver_at"])
         except (KeyError, TypeError, ValueError):
             deliver_at = datetime.now()
-        new_meta = letter_store.write_letter(
-            author=meta.get("author", "?"),
-            recipient=meta.get("recipient", "?"),
-            title=meta.get("title", "(无标题)"),
-            content=content,
-            deliver_at=deliver_at,
-            attachment_bytes=attachment or None,
-            attachment_ext=att_ext,
-            message_id=meta.get("message_id"),
-        )
-        self.letter_received.emit(new_meta["id"])
+        try:
+            new_meta = letter_store.write_letter(
+                author=meta.get("author", "?"),
+                recipient=meta.get("recipient", "?"),
+                title=meta.get("title", "(无标题)"),
+                content=content,
+                deliver_at=deliver_at,
+                attachment_bytes=attachment or None,
+                attachment_ext=att_ext,
+                message_id=meta.get("message_id"),
+            )
+            self.letter_received.emit(new_meta["id"])
+        except Exception:
+            forget_sig = getattr(self, "_forget_sig", None)
+            if forget_sig is not None:
+                forget_sig(sig_b64)
+            raise
 
 
 def _make_handler(hub: SyncHub):
