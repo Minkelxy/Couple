@@ -143,13 +143,7 @@ def _normalize_basic_types(data: dict) -> dict:
     return data
 
 
-def load() -> dict:
-    data = deepcopy(DEFAULTS)
-    app_paths.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    stored = _store.load()
-    if isinstance(stored, dict):
-        data.update(stored)
-    # 类型校正：防止 JSON 里写出错误类型
+def _normalize_numeric_settings(data: dict) -> dict:
     for key, minimum in (
         ("interval_sec", 3),
         ("window_width", 160),
@@ -160,6 +154,17 @@ def load() -> dict:
         except (TypeError, ValueError):
             value = DEFAULTS[key]
         data[key] = max(minimum, value)
+    return data
+
+
+def load() -> dict:
+    data = deepcopy(DEFAULTS)
+    app_paths.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    stored = _store.load()
+    if isinstance(stored, dict):
+        data.update(stored)
+    # 类型校正：防止 JSON 里写出错误类型
+    data = _normalize_numeric_settings(data)
     anniv = data.get("anniversaries", [])
     data["anniversaries"] = anniv if isinstance(anniv, list) else []
     data["albums"] = _ensure_default_album_entry(data.get("albums", []))
@@ -200,6 +205,7 @@ def save(data: dict) -> None:
 def update(**kwargs) -> dict:
     data = load()
     data.update(kwargs)
+    data = _normalize_numeric_settings(data)
     data = _normalize_basic_types(data)
     save(data)
     return data

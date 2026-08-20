@@ -45,6 +45,19 @@ class PhotoFrameConfigTests(unittest.TestCase):
             finally:
                 config._store = original_store
 
+    def test_update_normalizes_numeric_settings_before_returning(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_store = config._store
+            config._store = AtomicJsonStore(Path(tmp) / "photo_frame.json", {})
+            try:
+                updated = config.update(interval_sec="bad", window_width=20)
+
+                self.assertEqual(updated["interval_sec"], 15)
+                self.assertEqual(updated["window_width"], 160)
+                self.assertEqual(config._store.load()["window_width"], 160)
+            finally:
+                config._store = original_store
+
     def test_load_uses_atomic_store_and_recovers_invalid_values(self):
         with tempfile.TemporaryDirectory() as tmp:
             original_store = config._store
