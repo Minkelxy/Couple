@@ -134,6 +134,7 @@ class SyncHub(QObject):
         self._message_seen_lock = threading.Lock()
         self._message_seen_lru_max = 2048
         self._seen_message_ids: collections.OrderedDict[str, None] = collections.OrderedDict()
+        self._pending_message_ids: set[str] = set()
         stored_message_ids = self._message_seen_store.load()
         if isinstance(stored_message_ids, list):
             for message_id in stored_message_ids[-self._message_seen_lru_max:]:
@@ -511,6 +512,8 @@ class SyncHub(QObject):
             self._seen_message_ids[message_id] = None
             if len(self._seen_message_ids) > self._message_seen_lru_max:
                 self._seen_message_ids.popitem(last=False)
+            if not persist:
+                self._pending_message_ids.add(message_id)
             should_persist = persist
         if should_persist:
             self._persist_message_ids()
@@ -519,7 +522,10 @@ class SyncHub(QObject):
     def _persist_message_ids(self) -> None:
         try:
             with self._message_seen_lock:
-                items = list(self._seen_message_ids)
+                items = [
+                    message_id for message_id in self._seen_message_ids
+                    if message_id not in self._pending_message_ids
+                ]
             self._message_seen_store.save(items)
         except OSError:
             log_warning("同步事件去重表写入失败，当前进程内仍会去重")
@@ -527,6 +533,13 @@ class SyncHub(QObject):
     def _forget_message_id(self, message_id: str) -> None:
         with self._message_seen_lock:
             self._seen_message_ids.pop(message_id, None)
+            self._pending_message_ids.discard(message_id)
+        self._persist_message_ids()
+
+    def _commit_message_id(self, message_id: str) -> None:
+        with self._message_seen_lock:
+            self._pending_message_ids.discard(message_id)
+        self._persist_message_ids()
 
     def on_received(
         self,
@@ -599,7 +612,7 @@ class SyncHub(QObject):
             except Exception:
                 self._forget_message_id(message_id)
                 raise
-            self._persist_message_ids()
+            self._commit_message_id(message_id)
             return
         try:
             deliver_at = datetime.fromisoformat(meta["deliver_at"])

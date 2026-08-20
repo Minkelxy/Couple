@@ -18,6 +18,7 @@ class SyncTransportTests(unittest.TestCase):
             _message_seen_store=Mock(),
             _message_seen_lock=threading.Lock(),
             _seen_message_ids=collections.OrderedDict(),
+            _pending_message_ids=set(),
             _message_seen_lru_max=2,
         )
         hub._persist_message_ids = MethodType(SyncHub._persist_message_ids, hub)
@@ -35,6 +36,7 @@ class SyncTransportTests(unittest.TestCase):
             _message_seen_store=Mock(),
             _message_seen_lock=threading.Lock(),
             _seen_message_ids=collections.OrderedDict(),
+            _pending_message_ids=set(),
             _message_seen_lru_max=2,
             event_received=SimpleNamespace(
                 emit=Mock(side_effect=RuntimeError("handler failed"))
@@ -45,6 +47,7 @@ class SyncTransportTests(unittest.TestCase):
         )
         hub._persist_message_ids = MethodType(SyncHub._persist_message_ids, hub)
         hub._forget_message_id = MethodType(SyncHub._forget_message_id, hub)
+        hub._commit_message_id = MethodType(SyncHub._commit_message_id, hub)
         with patch.object(identity, "get_status", return_value=SimpleNamespace(paired=False)):
             with self.assertRaises(RuntimeError):
                 SyncHub.on_received(
@@ -56,7 +59,24 @@ class SyncTransportTests(unittest.TestCase):
                 )
 
         self.assertNotIn("event-failed", hub._seen_message_ids)
-        hub._message_seen_store.save.assert_not_called()
+        hub._message_seen_store.save.assert_called_once_with([])
+
+    def test_committing_one_event_does_not_persist_other_pending_event(self):
+        hub = SimpleNamespace(
+            _message_seen_store=Mock(),
+            _message_seen_lock=threading.Lock(),
+            _seen_message_ids=collections.OrderedDict(),
+            _pending_message_ids=set(),
+            _message_seen_lru_max=4,
+        )
+        hub._persist_message_ids = MethodType(SyncHub._persist_message_ids, hub)
+        hub._commit_message_id = MethodType(SyncHub._commit_message_id, hub)
+
+        self.assertTrue(SyncHub._check_and_record_message_id(hub, "event-a", persist=False))
+        self.assertTrue(SyncHub._check_and_record_message_id(hub, "event-b", persist=False))
+        SyncHub._commit_message_id(hub, "event-a")
+
+        hub._message_seen_store.save.assert_called_once_with(["event-a"])
 
     def test_send_async_reports_outbox_write_failure_without_raising(self):
         hub = SimpleNamespace(
