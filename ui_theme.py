@@ -67,6 +67,11 @@ def apply_theme(app: QApplication) -> None:
         }
         QToolButton:hover { background: #fff0f3; color: #d84f68; }
         QScrollArea { border: none; background: transparent; }
+        QMessageBox, QInputDialog { background: #f5f7fa; }
+        QMessageBox QLabel, QInputDialog QLabel { color: #263238; }
+        QMessageBox QPushButton, QInputDialog QPushButton {
+            min-width: 72px; padding-left: 14px; padding-right: 14px;
+        }
         QTextBrowser {
             border: 1px solid #dfe5ec; border-radius: 7px; background: #ffffff;
             selection-background-color: #e85d75;
