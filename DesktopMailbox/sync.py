@@ -274,8 +274,15 @@ class SyncHub(QObject):
                 )
                 t.start()
         if mode in ("cloud", "both") and self._cloud_client is not None:
-            item_id = self._outbox.enqueue(meta, content, att, att_ext)
-            self._start_cloud_outbox_item(item_id, silent=silent)
+            try:
+                item_id = self._outbox.enqueue(meta, content, att, att_ext)
+                self._start_cloud_outbox_item(item_id, silent=silent)
+            except Exception:
+                # The local letter is already durable; a failed outbox write
+                # must not bubble into the UI thread or lose that local copy.
+                log_exception("云 outbox 入队失败")
+                if not silent:
+                    self.send_result.emit(False, "云同步失败：本地发送队列无法写入")
 
     def send_event(
         self,

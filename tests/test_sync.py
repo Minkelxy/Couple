@@ -12,6 +12,21 @@ from common_utils import AtomicJsonStore
 
 
 class SyncTransportTests(unittest.TestCase):
+    def test_send_async_reports_outbox_write_failure_without_raising(self):
+        hub = SimpleNamespace(
+            _my_id="local-id",
+            _cfg={"sync_mode": "cloud"},
+            _cloud_client=Mock(),
+            _outbox=Mock(),
+            send_result=Mock(),
+        )
+        hub._outbox.enqueue.side_effect = OSError("disk full")
+        with patch("DesktopMailbox.sync.idm.sign_message", side_effect=lambda meta, *_: meta), \
+                patch("DesktopMailbox.sync.log_exception"):
+            SyncHub.send_async(hub, {"type": "checkin"}, "", b"", "", silent=False)
+
+        hub.send_result.emit.assert_called_once_with(False, "云同步失败：本地发送队列无法写入")
+
     def test_send_async_assigns_message_id_for_events(self):
         hub = SimpleNamespace(
             _my_id="local-id",
