@@ -24,7 +24,7 @@ def _make_heart_icon(size: int = 64) -> QIcon:
     p = QPainter(pm)
     p.setRenderHint(QPainter.Antialiasing, True)
     p.setPen(Qt.NoPen)
-    p.setBrush(QColor(236, 90, 122))
+    p.setBrush(QColor(232, 93, 117))
     r = size / 4.0
     cx, cy = size / 2.0, size / 2.0
     p.drawEllipse(int(cx - r * 0.55), int(cy - r * 0.45), int(r), int(r))
@@ -95,7 +95,7 @@ class UnifiedTray(QObject):
         menu = QMenu()
 
         # ===== 相框区 =====
-        sec_pf = QAction("— 相册 —", menu)
+        sec_pf = QAction("相册", menu)
         sec_pf.setEnabled(False)
         menu.addAction(sec_pf)
 
@@ -195,7 +195,7 @@ class UnifiedTray(QObject):
         menu.addSeparator()
 
         # ===== 信箱区 =====
-        sec_mb = QAction("— 信箱 —", menu)
+        sec_mb = QAction("信箱", menu)
         sec_mb.setEnabled(False)
         menu.addAction(sec_mb)
 

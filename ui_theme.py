@@ -136,6 +136,8 @@ def apply_theme(app: QApplication) -> None:
         }
         QMenu::item { padding: 7px 28px 7px 12px; border-radius: 4px; }
         QMenu::item:selected { color: #263238; background: #ffe8ed; }
+        QMenu::item:disabled { color: #9aa5b1; font-weight: 600; }
+        QMenu::separator { height: 1px; margin: 5px 8px; background: #dfe5ec; }
         QToolTip {
             padding: 5px 8px; color: #ffffff; border: none;
             border-radius: 4px; background: #263238;
