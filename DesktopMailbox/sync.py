@@ -321,6 +321,7 @@ class SyncHub(QObject):
         attachment: bytes | None,
         att_ext: str,
         silent: bool = False,
+        durable: bool = True,
     ) -> None:
         # 统一注入 sender_id（send_event 已注入，但 compose_window 直接调 send_async 需补）
         if not isinstance(meta, dict):
@@ -351,8 +352,15 @@ class SyncHub(QObject):
                 t.start()
         if mode in ("cloud", "both") and self._cloud_client is not None:
             try:
-                item_id = self._outbox.enqueue(meta, content, att, att_ext)
-                self._start_cloud_outbox_item(item_id, silent=silent)
+                if durable:
+                    item_id = self._outbox.enqueue(meta, content, att, att_ext)
+                    self._start_cloud_outbox_item(item_id, silent=silent)
+                else:
+                    threading.Thread(
+                        target=self._cloud_send_blocking,
+                        args=(meta, content, att, att_ext, silent),
+                        daemon=True,
+                    ).start()
             except Exception:
                 # The local letter is already durable; a failed outbox write
                 # must not bubble into the UI thread or lose that local copy.
@@ -367,6 +375,7 @@ class SyncHub(QObject):
         attachment: bytes | None = None,
         att_ext: str = "",
         silent: bool = False,
+        durable: bool = True,
     ) -> None:
         """通用事件发送：自动构造 meta={type, **payload, sent_at} 复用 send_async。
 
@@ -379,7 +388,9 @@ class SyncHub(QObject):
             "sender_id": self._my_id,
         }
         meta.update(payload)
-        self.send_async(meta, "", attachment, att_ext, silent=silent)
+        self.send_async(
+            meta, "", attachment, att_ext, silent=silent, durable=durable
+        )
 
     def _send_blocking(
         self,
@@ -593,7 +604,9 @@ class SyncHub(QObject):
         if not SyncHub._timer_is_current(self, generation):
             return
         # 发送心跳事件（不带附件、无正文）；静默发送，失败不弹通知
-        self.send_event("ping", {"kind": "heartbeat"}, silent=True)
+        self.send_event(
+            "ping", {"kind": "heartbeat"}, silent=True, durable=False
+        )
         self._heartbeat_schedule(generation)
 
     # ---------- 收信 ----------

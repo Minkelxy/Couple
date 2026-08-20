@@ -124,6 +124,7 @@ class SyncTransportTests(unittest.TestCase):
             _cfg={"sync_mode": "cloud"},
             _cloud_client=Mock(),
             _outbox=Mock(),
+            _cloud_send_blocking=Mock(),
             send_result=Mock(),
         )
         hub._outbox.enqueue.side_effect = OSError("disk full")
@@ -144,6 +145,32 @@ class SyncTransportTests(unittest.TestCase):
 
         signed_meta = sign_message.call_args[0][0]
         self.assertRegex(signed_meta["message_id"], r"^[0-9a-f]{32}$")
+
+    def test_non_durable_cloud_send_skips_outbox(self):
+        hub = SimpleNamespace(
+            _my_id="local-id",
+            _cfg={"sync_mode": "cloud"},
+            _cloud_client=Mock(),
+            _outbox=Mock(),
+            _cloud_send_blocking=Mock(),
+        )
+        with patch(
+            "DesktopMailbox.sync.idm.sign_message",
+            side_effect=lambda meta, *_: meta,
+        ), patch("DesktopMailbox.sync.threading.Thread") as thread:
+            SyncHub.send_async(
+                hub,
+                {"type": "ping", "kind": "heartbeat"},
+                "",
+                b"",
+                "",
+                silent=True,
+                durable=False,
+            )
+
+        hub._outbox.enqueue.assert_not_called()
+        thread.assert_called_once()
+        thread.return_value.start.assert_called_once_with()
 
     def test_send_async_preserves_existing_message_id(self):
         hub = SimpleNamespace(
