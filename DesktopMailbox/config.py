@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import datetime
 from pathlib import Path
 
 import app_paths
@@ -60,10 +61,38 @@ def _text(value, default: str = "") -> str:
     return value.strip() if isinstance(value, str) else default
 
 
+def _normalize_anniversaries(value) -> list[dict]:
+    if not isinstance(value, list):
+        return []
+    result = []
+    for raw in value:
+        if not isinstance(raw, dict):
+            continue
+        date_value = raw.get("date")
+        if not isinstance(date_value, str):
+            continue
+        try:
+            datetime.strptime(f"2000-{date_value}", "%Y-%m-%d")
+        except ValueError:
+            continue
+        item = dict(raw)
+        item["id"] = _text(item.get("id"), date_value)
+        item["date"] = date_value
+        item["title"] = _text(item.get("title"), "纪念日")
+        item["content"] = _text(item.get("content"), "")
+        item["deliver_hour"] = _bounded_int(
+            item.get("deliver_hour"), 8, 0, 23
+        )
+        result.append(item)
+    return result
+
+
 def _normalize(data: dict | None) -> dict:
     stored = data if isinstance(data, dict) else {}
     data = deepcopy(DEFAULTS)
     data.update(stored)
+    data["my_name"] = _text(data.get("my_name"), DEFAULTS["my_name"])
+    data["their_name"] = _text(data.get("their_name"), DEFAULTS["their_name"])
     data["sync_enabled"] = data.get("sync_enabled") if isinstance(data.get("sync_enabled"), bool) else DEFAULTS["sync_enabled"]
     data["sync_mode"] = data.get("sync_mode") if data.get("sync_mode") in ("lan", "cloud", "both") else DEFAULTS["sync_mode"]
     for key in ("peer_host", "cloud_server", "cloud_pair_code"):
@@ -76,8 +105,7 @@ def _normalize(data: dict | None) -> dict:
     data["cloud_poll_interval_sec"] = _bounded_int(
         data.get("cloud_poll_interval_sec"), DEFAULTS["cloud_poll_interval_sec"], 5, 3600
     )
-    anniv = data.get("anniversaries", [])
-    data["anniversaries"] = anniv if isinstance(anniv, list) else []
+    data["anniversaries"] = _normalize_anniversaries(data.get("anniversaries", []))
     return data
 
 

@@ -80,6 +80,34 @@ class MailboxConfigTests(unittest.TestCase):
             finally:
                 config._STORE = original_store
 
+    def test_load_normalizes_anniversary_records(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_store = config._STORE
+            config._STORE = AtomicJsonStore(Path(tmp) / "mailbox.json", {})
+            try:
+                config._STORE.save({
+                    "my_name": 123,
+                    "anniversaries": [
+                        {"date": "02-30", "title": "bad"},
+                        {"date": "08-20", "id": None, "title": 42,
+                         "content": None, "deliver_hour": 99},
+                        "invalid",
+                    ],
+                })
+
+                loaded = config.load()
+
+                self.assertEqual(loaded["my_name"], "我")
+                self.assertEqual(loaded["anniversaries"], [{
+                    "date": "08-20",
+                    "id": "08-20",
+                    "title": "纪念日",
+                    "content": "",
+                    "deliver_hour": 23,
+                }])
+            finally:
+                config._STORE = original_store
+
 
 if __name__ == "__main__":
     unittest.main()
