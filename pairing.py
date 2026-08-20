@@ -192,6 +192,8 @@ class PairingSession:
     # ---------- 内部流程 ----------
 
     def _emit(self, p: PairingProgress) -> None:
+        if self._stop.is_set():
+            return
         try:
             self._cb(p)
         except Exception:
@@ -360,6 +362,8 @@ class PairingSession:
         ))
 
     def _finish_success(self) -> None:
+        if self._stop.is_set():
+            return
         pk_b64 = getattr(self, "_pending_partner_pk_b64", None)
         nickname = getattr(self, "_pending_partner_nickname", "对方")
         if not pk_b64:

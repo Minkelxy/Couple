@@ -118,6 +118,22 @@ class PairingTransportTests(unittest.TestCase):
         self.assertTrue(session.wait(1))
         self.assertFalse(thread.is_alive())
 
+    def test_cancel_suppresses_late_progress_and_completion(self):
+        progress = []
+        session = pairing.PairingSession(
+            "https://relay.invalid", "A", progress.append
+        )
+        session._pending_partner_pk_b64 = "partner-key"
+        session._pending_partner_nickname = "B"
+        session.cancel()
+
+        session._emit(pairing.PairingProgress(pairing.PairingPhase.FAILED))
+        with patch.object(pairing.idm, "save_partner") as save_partner:
+            session._finish_success()
+
+        self.assertEqual(progress, [])
+        save_partner.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
