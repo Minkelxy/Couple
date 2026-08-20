@@ -68,6 +68,7 @@ class PairingProgress:
 
 
 ProgressCB = Callable[[PairingProgress], None]
+_DECLARE_RETRY_DELAY_SEC = 1
 
 
 def _post(server: str, path: str, payload: dict) -> dict | None:
@@ -172,12 +173,18 @@ class PairingSession:
 
     def _declare(self, role: str, token: str) -> tuple[bool, str]:
         my_pk_b64 = idm.get_status().my_pk_b64
-        resp = _post(self._server, "/api/pairing/declare", {
+        payload = {
             "token": token,
             "role": role,
             "pk_b64": my_pk_b64,
             "nickname": self._nickname,
-        })
+        }
+        resp = None
+        for attempt in range(2):
+            resp = _post(self._server, "/api/pairing/declare", payload)
+            if resp is not None or attempt == 1 or self._stop.wait(_DECLARE_RETRY_DELAY_SEC):
+                break
+            log_warning("pairing declare 无响应，正在重试")
         if not resp or not resp.get("ok"):
             msg = (resp or {}).get("message") or "服务器返回错误"
             return False, msg

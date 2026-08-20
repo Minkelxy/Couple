@@ -273,6 +273,38 @@ class RelayPollingTests(unittest.TestCase):
             finally:
                 relay_server._DB_PATH = original_db_path
 
+    def test_pairing_declare_retry_preserves_nonce_and_confirmation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_db_path = relay_server._DB_PATH
+            relay_server._DB_PATH = Path(tmp) / "letters.db"
+            try:
+                relay_server._init_db()
+                key = Ed25519PrivateKey.generate()
+                pk = relay_server._b64e(key.public_key().public_bytes_raw())
+                first_nonce, conflict = relay_server._declare_pairing(
+                    "ABC234", "host", pk, "A"
+                )
+                self.assertIsNotNone(first_nonce)
+                self.assertFalse(conflict)
+                with relay_server._db_session() as conn:
+                    conn.execute(
+                        "UPDATE pairing_members SET confirmed = 1 "
+                        "WHERE token = ? AND role = ?",
+                        ("ABC234", "host"),
+                    )
+                    conn.commit()
+
+                second_nonce, conflict = relay_server._declare_pairing(
+                    "ABC234", "host", pk, "A renamed"
+                )
+                self.assertEqual(second_nonce, first_nonce)
+                self.assertFalse(conflict)
+                state = relay_server._load_pairing("ABC234")
+                self.assertTrue(state["host"]["confirmed"])
+                self.assertEqual(state["host"]["nickname"], "A renamed")
+            finally:
+                relay_server._DB_PATH = original_db_path
+
     def test_send_rejects_non_string_bucket_fields(self):
         client = relay_server.app.test_client()
 

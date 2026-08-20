@@ -66,6 +66,27 @@ class PairingTransportTests(unittest.TestCase):
                 {"ok": True},
             )
 
+    def test_declare_retries_transport_timeout_once(self):
+        session = pairing.PairingSession.__new__(pairing.PairingSession)
+        session._server = "https://relay.invalid"
+        session._nickname = "A"
+        session._stop = threading.Event()
+        session._role = "host"
+        session._nonce_host = None
+        status = type("Status", (), {"my_pk_b64": "public-key"})()
+        with patch.object(pairing.idm, "get_status", return_value=status), \
+                patch.object(
+                    pairing,
+                    "_post",
+                    side_effect=[None, {"ok": True, "nonce": "nonce-1"}],
+                ) as post, patch.object(pairing, "_DECLARE_RETRY_DELAY_SEC", 0):
+            ok, nonce = session._declare("host", "ABC234")
+
+        self.assertTrue(ok)
+        self.assertEqual(nonce, "nonce-1")
+        self.assertEqual(session._nonce_host, "nonce-1")
+        self.assertEqual(post.call_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

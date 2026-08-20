@@ -439,18 +439,35 @@ def _complete_pairing(token: str, channel_id: str) -> None:
 
 
 def _declare_pairing(token: str, role: str, pk_b64: str, nickname: str) -> tuple[str | None, bool]:
-    """Atomically claim one role; return (nonce, conflict)."""
+    """Atomically claim one role; return (nonce, conflict).
+
+    A client may retry after the declaration was committed but its response
+    was lost. Preserve the original nonce and confirmation state for the same
+    public key so that retrying cannot invalidate the in-progress handshake.
+    """
     now = time.time()
     nonce = secrets.token_urlsafe(12)
     with _db_session() as conn:
         conn.execute("BEGIN IMMEDIATE")
         row = conn.execute(
-            "SELECT pk_b64 FROM pairing_members WHERE token = ? AND role = ?",
+            "SELECT pk_b64, nonce FROM pairing_members WHERE token = ? AND role = ?",
             (token, role),
         ).fetchone()
         if row is not None and row["pk_b64"] != pk_b64:
             conn.rollback()
             return None, True
+        if row is not None:
+            conn.execute(
+                "UPDATE pairing_members SET created_at = ?, nickname = ? "
+                "WHERE token = ? AND role = ?",
+                (now, nickname, token, role),
+            )
+            conn.execute(
+                "UPDATE pairing_sessions SET created_at = ? WHERE token = ?",
+                (now, token),
+            )
+            conn.commit()
+            return row["nonce"], False
         conn.execute(
             "INSERT INTO pairing_members "
             "(token, role, created_at, pk_b64, nickname, nonce, confirmed) "
