@@ -344,10 +344,17 @@ class SyncHub(QObject):
             except (binascii.Error, ValueError, TypeError):
                 self._outbox.remove(item_id)
                 return
+            meta = item.get("meta")
+            content = item.get("content", "")
+            att_ext = item.get("attachment_ext", "")
+            if not isinstance(meta, dict) or not isinstance(content, str) \
+                    or not isinstance(att_ext, str):
+                log_warning("丢弃格式损坏的云 outbox 项: %s", item_id)
+                self._outbox.remove(item_id)
+                return
             threading.Thread(
                 target=self._cloud_send_blocking,
-                args=(item["meta"], item.get("content", ""), attachment,
-                      item.get("attachment_ext", ""), silent, item_id),
+                args=(meta, content, attachment, att_ext, silent, item_id),
                 daemon=True,
             ).start()
             started = True
