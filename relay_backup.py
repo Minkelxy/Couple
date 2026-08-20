@@ -17,6 +17,7 @@ DEFAULT_BACKUP_DIR = Path(
     os.environ.get("COUPLE_RELAY_BACKUP_DIR", "/var/backups/couple-relay")
 ).expanduser()
 BACKUP_RETENTION_COUNT = 14
+_SQLITE_TIMEOUT_SEC = 30.0
 
 
 def _assert_integrity(conn: sqlite3.Connection) -> None:
@@ -45,8 +46,8 @@ def backup_database(
     )
     os.close(fd)
     try:
-        with closing(sqlite3.connect(str(db_path))) as source, closing(
-            sqlite3.connect(tmp_name)
+        with closing(sqlite3.connect(str(db_path), timeout=_SQLITE_TIMEOUT_SEC)) as source, closing(
+            sqlite3.connect(tmp_name, timeout=_SQLITE_TIMEOUT_SEC)
         ) as dest:
             _assert_integrity(source)
             source.backup(dest)
@@ -89,8 +90,8 @@ def restore_database(backup_path: Path, db_path: Path) -> Path:
     )
     os.close(fd)
     try:
-        with closing(sqlite3.connect(str(backup_path))) as source, closing(
-            sqlite3.connect(tmp_name)
+        with closing(sqlite3.connect(str(backup_path), timeout=_SQLITE_TIMEOUT_SEC)) as source, closing(
+            sqlite3.connect(tmp_name, timeout=_SQLITE_TIMEOUT_SEC)
         ) as dest:
             _assert_integrity(source)
             source.backup(dest)
