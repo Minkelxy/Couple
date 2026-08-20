@@ -101,6 +101,22 @@ class PairingTransportTests(unittest.TestCase):
         thread.assert_called_once_with(target=session._confirm_loop, daemon=True)
         worker.start.assert_called_once_with()
 
+    def test_start_host_is_idempotent(self):
+        session = pairing.PairingSession(
+            "https://relay.invalid", "A", lambda _p: None
+        )
+        worker = Mock()
+        with patch.object(
+            pairing.idm, "generate_pairing_token", return_value="ABC234"
+        ), patch.object(
+            pairing.threading, "Thread", return_value=worker
+        ) as thread:
+            session.start_host()
+            session.start_host()
+
+        thread.assert_called_once_with(target=session._run_host, daemon=True)
+        worker.start.assert_called_once_with()
+
     def test_wait_joins_all_pairing_workers(self):
         session = pairing.PairingSession(
             "https://relay.invalid", "A", lambda _p: None

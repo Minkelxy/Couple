@@ -124,12 +124,19 @@ class PairingSession:
         self._token: str | None = None
         self._nonce_host: str | None = None
         self._nonce_guest: str | None = None
+        self._start_lock = threading.Lock()
+        self._started = False
         self._confirm_lock = threading.Lock()
         self._confirm_started = False
 
     # ---------- 公共入口 ----------
 
     def start_host(self) -> None:
+        """Start the host-side pairing worker."""
+        with self._start_lock:
+            if self._started or self._stop.is_set():
+                return
+            self._started = True
         """发起方：生成 token → 声明 → 等对方。"""
         self._role = "host"
         self._token = idm.generate_pairing_token()
@@ -145,6 +152,10 @@ class PairingSession:
                 error_message="配对码格式错误：请输入 6 位字母数字（不含 I/L/0/O）",
             ))
             return
+        with self._start_lock:
+            if self._started or self._stop.is_set():
+                return
+            self._started = True
         self._role = "guest"
         self._token = token
         self._emit(PairingProgress(PairingPhase.WAITING_PARTNER, token=self._token))
