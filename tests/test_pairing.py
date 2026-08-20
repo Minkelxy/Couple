@@ -101,6 +101,23 @@ class PairingTransportTests(unittest.TestCase):
         thread.assert_called_once_with(target=session._confirm_loop, daemon=True)
         worker.start.assert_called_once_with()
 
+    def test_wait_joins_all_pairing_workers(self):
+        session = pairing.PairingSession(
+            "https://relay.invalid", "A", lambda _p: None
+        )
+        stopped = threading.Event()
+
+        def worker():
+            stopped.wait(1)
+
+        thread = threading.Thread(target=worker)
+        with session._threads_lock:
+            session._threads.append(thread)
+        thread.start()
+        stopped.set()
+        self.assertTrue(session.wait(1))
+        self.assertFalse(thread.is_alive())
+
 
 if __name__ == "__main__":
     unittest.main()

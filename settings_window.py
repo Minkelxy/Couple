@@ -57,11 +57,17 @@ class _PairingWorker(QObject):
     def cancel(self) -> None:
         if self._session is not None:
             self._session.cancel()
+            self._session.wait(3)
 
 
 class SettingsWindow(QMainWindow):
     """综合设置窗口。保存后发 settings_changed 信号通知外部刷新。"""
     settings_changed = Signal()  # 保存后触发
+
+    def closeEvent(self, event) -> None:
+        if self._pairing_worker is not None:
+            self._on_pair_cancel()
+        event.accept()
 
     def __init__(self) -> None:
         super().__init__()

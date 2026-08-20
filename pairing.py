@@ -117,6 +117,8 @@ class PairingSession:
         self._nickname = nickname or "我"
         self._cb = cb
         self._thread: threading.Thread | None = None
+        self._threads: list[threading.Thread] = []
+        self._threads_lock = threading.Lock()
         self._stop = threading.Event()
         self._role: str | None = None   # "host" / "guest"
         self._token: str | None = None
@@ -132,8 +134,7 @@ class PairingSession:
         self._role = "host"
         self._token = idm.generate_pairing_token()
         self._emit(PairingProgress(PairingPhase.WAITING_PARTNER, token=self._token))
-        self._thread = threading.Thread(target=self._run_host, daemon=True)
-        self._thread.start()
+        self._start_thread(self._run_host)
 
     def start_guest(self, token: str) -> None:
         """接受方：输入 token → 声明 → 等 host。"""
@@ -147,11 +148,31 @@ class PairingSession:
         self._role = "guest"
         self._token = token
         self._emit(PairingProgress(PairingPhase.WAITING_PARTNER, token=self._token))
-        self._thread = threading.Thread(target=self._run_guest, daemon=True)
-        self._thread.start()
+        self._start_thread(self._run_guest)
 
     def cancel(self) -> None:
         self._stop.set()
+
+    def wait(self, timeout: float | None = None) -> bool:
+        """Wait for all network workers; return whether they all stopped."""
+        deadline = None if timeout is None else time.monotonic() + timeout
+        with self._threads_lock:
+            threads = list(self._threads)
+        for thread in threads:
+            if thread is threading.current_thread():
+                continue
+            remaining = None if deadline is None else max(0, deadline - time.monotonic())
+            thread.join(remaining)
+        with self._threads_lock:
+            self._threads = [thread for thread in self._threads if thread.is_alive()]
+        return not self._threads
+
+    def _start_thread(self, target) -> None:
+        thread = threading.Thread(target=target, daemon=True)
+        with self._threads_lock:
+            self._threads.append(thread)
+            self._thread = thread
+        thread.start()
 
     def confirm_safety(self, matched: bool) -> None:
         """用户在 UI 上点了"对方报的数字和我屏幕一样（是/否）"。"""
@@ -160,8 +181,7 @@ class PairingSession:
                 if self._confirm_started:
                     return
                 self._confirm_started = True
-            self._thread = threading.Thread(target=self._confirm_loop, daemon=True)
-            self._thread.start()
+            self._start_thread(self._confirm_loop)
         else:
             self._emit(PairingProgress(
                 PairingPhase.FAILED,
