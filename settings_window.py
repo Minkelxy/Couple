@@ -72,8 +72,8 @@ class SettingsWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("设置 ⚙")
-        self.resize(680, 720)
-        self.setMinimumSize(640, 680)
+        self.resize(720, 780)
+        self.setMinimumSize(660, 720)
         self._build_ui()
         self._load_values()
 
@@ -81,7 +81,18 @@ class SettingsWindow(QMainWindow):
         central = QWidget(self)
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
-        root.setContentsMargins(12, 12, 12, 12)
+        root.setContentsMargins(24, 20, 24, 20)
+        root.setSpacing(10)
+
+        header = QVBoxLayout()
+        header.setSpacing(2)
+        title = QLabel("设置", self)
+        title.setStyleSheet("font-size:24px; font-weight:700; color:#263238;")
+        subtitle = QLabel("调整相框、信箱、同步和身份，让两台设备保持一致", self)
+        subtitle.setStyleSheet("color:#7b8794; font-size:13px;")
+        header.addWidget(title)
+        header.addWidget(subtitle)
+        root.addLayout(header)
 
         tabs = QTabWidget(self)
         tabs.addTab(self._build_photo_frame_tab(), "🖼 相框")
@@ -99,9 +110,9 @@ class SettingsWindow(QMainWindow):
         save_btn = QPushButton("💾 保存设置", self)
         save_btn.setToolTip("保存所有设置并立即生效")
         save_btn.setStyleSheet(
-            "QPushButton{background:#e65a7a;color:#fff;border:none;"
-            "border-radius:8px;padding:10px 24px;font-size:14px;}"
-            "QPushButton:hover{background:#d94a6a;}"
+            "QPushButton{background:#e85d75;color:#fff;border:none;"
+            "border-radius:6px;padding:10px 24px;font-size:14px;font-weight:600;}"
+            "QPushButton:hover{background:#d94f68;}"
         )
         save_btn.clicked.connect(self._on_save)
         btn_row.addWidget(save_btn)
@@ -438,10 +449,10 @@ class SettingsWindow(QMainWindow):
     @staticmethod
     def _primary_btn_css() -> str:
         return (
-            "QPushButton{background:#e65a7a;color:#fff;border:none;"
-            "border-radius:8px;padding:8px 16px;}"
-            "QPushButton:hover{background:#d94a6a;}"
-            "QPushButton:disabled{background:#ccc;}"
+            "QPushButton{background:#e85d75;color:#fff;border:none;"
+            "border-radius:6px;padding:9px 16px;font-weight:600;}"
+            "QPushButton:hover{background:#d94f68;}"
+            "QPushButton:disabled{background:#d9dee4;color:#ffffff;}"
         )
 
     def _copy_text(self, text: str) -> None:

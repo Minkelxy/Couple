@@ -21,7 +21,7 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
 )
-from PySide6.QtGui import QAction, QIcon, QPixmap, QWheelEvent
+from PySide6.QtGui import QAction, QColor, QIcon, QPixmap, QWheelEvent
 from PySide6.QtWidgets import (
     QComboBox,
     QCheckBox,
@@ -435,8 +435,8 @@ class GalleryGridWindow(QMainWindow):
     def __init__(self, hub=None) -> None:
         super().__init__()
         self.setWindowTitle("相册浏览 🖼")
-        self.resize(900, 650)
-        self.setStyleSheet("QMainWindow{background:#fafafa;}")
+        self.resize(960, 700)
+        self.setMinimumSize(800, 560)
         self._gallery_win: GalleryWindow | None = None
         self._hub = hub
         # 后台 worker 引用（用于生命周期管理 + 防重复）
@@ -471,36 +471,51 @@ class GalleryGridWindow(QMainWindow):
         central = QWidget(self)
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
-        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setContentsMargins(24, 20, 24, 20)
         layout.setSpacing(10)
+
+        header = QVBoxLayout()
+        header.setSpacing(2)
+        title = QLabel("相册浏览", self)
+        title.setStyleSheet("font-size:24px; font-weight:700; color:#263238;")
+        subtitle = QLabel("挑选照片、筛选收藏，双击即可开始播放", self)
+        subtitle.setStyleSheet("color:#7b8794; font-size:13px;")
+        header.addWidget(title)
+        header.addWidget(subtitle)
+        layout.addLayout(header)
 
         # 顶部相册选择
         top_row = QHBoxLayout()
-        top_row.addWidget(QLabel("相册："))
+        top_row.addWidget(QLabel("相册"))
         self._album_combo = QComboBox()
         self._album_combo.setStyleSheet(
-            "QComboBox{padding:6px;border:1px solid #ddd;border-radius:6px;font-size:14px;}"
+            "QComboBox{padding:6px 9px;border:1px solid #d7dee8;"
+            "border-radius:6px;font-size:14px;background:#ffffff;}"
             "QComboBox::drop-down{border:none;}"
         )
         self._album_combo.currentIndexChanged.connect(self._on_album_changed)
         top_row.addWidget(self._album_combo, 1)
         self._search = QLineEdit()
-        self._search.setPlaceholderText("Search photos")
+        self._search.setPlaceholderText("搜索照片")
         self._search.setClearButtonEnabled(True)
         self._search.setMaximumWidth(220)
         self._search.textChanged.connect(self._on_search_changed)
         top_row.addWidget(self._search)
         self._sort_combo = QComboBox()
-        self._sort_combo.addItem("Name", "name")
-        self._sort_combo.addItem("Newest", "newest")
-        self._sort_combo.addItem("Oldest", "oldest")
-        self._sort_combo.addItem("Random", "random")
+        self._sort_combo.addItem("按名称", "name")
+        self._sort_combo.addItem("最新添加", "newest")
+        self._sort_combo.addItem("最早添加", "oldest")
+        self._sort_combo.addItem("随机排列", "random")
         self._sort_combo.currentIndexChanged.connect(self._on_sort_changed)
         top_row.addWidget(self._sort_combo)
-        self._favorites_check = QCheckBox("Favorites")
+        self._favorites_check = QCheckBox("仅看收藏")
         self._favorites_check.toggled.connect(self._on_favorites_changed)
         top_row.addWidget(self._favorites_check)
         layout.addLayout(top_row)
+
+        self._grid_status = QLabel("正在读取照片…", self)
+        self._grid_status.setStyleSheet("color:#7b8794; font-size:12px;")
+        layout.addWidget(self._grid_status)
 
         # 网格
         self._grid = QListWidget()
@@ -512,9 +527,9 @@ class GalleryGridWindow(QMainWindow):
         self._grid.setWrapping(True)
         self._grid.setSpacing(8)
         self._grid.setStyleSheet(
-            "QListWidget{background:#fff;border:1px solid #eee;border-radius:8px;}"
-            "QListWidget::item{border-radius:6px;}"
-            "QListWidget::item:selected{background:#fdf2f5;}"
+            "QListWidget{background:#ffffff;border:1px solid #dfe5ec;border-radius:8px;}"
+            "QListWidget::item{border-radius:6px;padding:4px;}"
+            "QListWidget::item:selected{background:#ffe8ed;}"
         )
         self._grid.itemDoubleClicked.connect(self._on_item_double_clicked)
         # 右键菜单：共享当前相册给对方
@@ -597,10 +612,12 @@ class GalleryGridWindow(QMainWindow):
         elif self._sort_mode == "random":
             random.shuffle(images)
         self._grid_images = images
+        self._grid_status.setText(f"{len(images)} 张照片" if images else "当前没有符合条件的照片")
         if not images:
             item = QListWidgetItem("📭 把照片放到这个目录就会显示在这里\n" + path)
             item.setFlags(Qt.NoItemFlags)
             item.setTextAlignment(Qt.AlignCenter)
+            item.setForeground(QColor("#7b8794"))
             self._grid.addItem(item)
             return
         # 先放占位项（无图标、显示文件名），保持位置与 images 索引对齐
