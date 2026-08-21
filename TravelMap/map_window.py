@@ -619,7 +619,7 @@ class TravelMapWindow(QMainWindow):
         self._default_type = "wish" if self._default_type == "visited" else "visited"
         label = "愿望" if self._default_type == "wish" else "已去过"
         self.switch_btn.setText(f"新增默认：{label}")
-        QMessageBox.information(self, "已切换", f"新增城市默认类型：{label}")
+        self.statusBar().showMessage(f"新增城市默认类型：{label}", 3000)
 
     def closeEvent(self, event) -> None:
         self._route_timer.stop()
