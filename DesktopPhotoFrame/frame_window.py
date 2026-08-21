@@ -500,11 +500,20 @@ class FrameWindow(QWidget):
         pm.fill(Qt.transparent)
         p = QPainter(pm)
         p.setRenderHint(QPainter.Antialiasing)
-        p.setPen(QPen(QColor(200, 200, 200, 180)))
+        panel = QRectF(
+            pm.width() * 0.12,
+            pm.height() * 0.34,
+            pm.width() * 0.76,
+            pm.height() * 0.32,
+        )
+        p.setBrush(QColor(20, 25, 30, 180))
+        p.setPen(QPen(QColor(255, 255, 255, 70), 1))
+        p.drawRoundedRect(panel, 12, 12)
+        p.setPen(QPen(QColor(238, 242, 246, 220)))
         watermark_font = QApplication.font()
-        watermark_font.setPointSize(11)
+        watermark_font.setPointSize(10)
         p.setFont(watermark_font)
-        p.drawText(QRectF(0, 0, pm.width(), pm.height()), Qt.AlignCenter, text)
+        p.drawText(panel.adjusted(18, 12, -18, -12), Qt.AlignCenter | Qt.TextWordWrap, text)
         p.end()
         self._label.set_image(pm, kb_enabled=False)
         self._label.setToolTip(text)
