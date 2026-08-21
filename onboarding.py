@@ -142,13 +142,18 @@ class OnboardingWindow(QMainWindow):
         my_name = self._my_name.text().strip() or "我"
         their_name = self._their_name.text().strip() or "你"
         image_dir = self._image_dir.text().strip() or str(app_paths.IMAGES_DIR)
+        peer_host = self._peer_host.text().strip()
+        if self._sync_check.isChecked() and not peer_host:
+            self._sync_hint.setText("请填写对方电脑的局域网 IP 后再完成设置。")
+            self._sync_hint.setStyleSheet("color:#b04a5a;font-size:12px;")
+            self._peer_host.setFocus()
+            return
         
         # 保存配置
         mb_config.update(my_name=my_name, their_name=their_name)
         pf_config.update(image_dir=image_dir)
         
         if self._sync_check.isChecked():
-            peer_host = self._peer_host.text().strip()
             mb_config.update(sync_enabled=True, peer_host=peer_host)
         
         # 标记引导完成
