@@ -200,6 +200,7 @@ class CheckinEditor(QDialog):
 
         # 保存按钮
         self._save_btn = QPushButton("保存", self)
+        self._save_btn.setEnabled(False)
         self._save_btn.setStyleSheet(
             "QPushButton{background:#e85d75; color:#fff; border:none;"
             "border-radius:6px; padding:10px; font-size:15px;font-weight:600;}"
@@ -210,6 +211,7 @@ class CheckinEditor(QDialog):
 
     def _select_mood(self, mood: int) -> None:
         self._mood = mood
+        self._save_btn.setEnabled(mood > 0)
 
     def _pick_image(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -242,6 +244,7 @@ class CheckinEditor(QDialog):
         self._mood = rec["mood"]
         if rec["mood"] in self._mood_buttons:
             self._mood_buttons[rec["mood"]].setChecked(True)
+            self._save_btn.setEnabled(True)
         self._text_edit.setText(rec["text"] or "")
         if rec["image_path"]:
             self._image_path = rec["image_path"]
