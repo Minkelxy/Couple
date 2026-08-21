@@ -46,6 +46,14 @@ def _btn_style() -> str:
             "QPushButton:disabled{background:#d9dee4;color:#fff;}")
 
 
+def _secondary_btn_style() -> str:
+    return ("QPushButton{background:#ffffff;color:#52616d;"
+            "border:1px solid #d7dee8;border-radius:6px;padding:9px 16px;"
+            "font-size:14px;}"
+            "QPushButton:hover{background:#fff0f3;border-color:#e8a0ad;}"
+            "QPushButton:disabled{background:#edf0f3;color:#aab3bd;}")
+
+
 def handle_partner_event(
     meta: dict, content: str, attachment: bytes, att_ext: str
 ) -> None:
@@ -327,7 +335,8 @@ class BoardWindow(QMainWindow):
         self._add_btn = add_btn
 
         report_btn = QPushButton("生成年度报告", central)
-        report_btn.setStyleSheet(_btn_style())
+        report_btn.setStyleSheet(_secondary_btn_style())
+        report_btn.setToolTip("生成当前年度的观影统计报告")
         report_btn.clicked.connect(self._on_report)
         bar.addWidget(report_btn)
         root.addLayout(bar)
