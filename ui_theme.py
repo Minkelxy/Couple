@@ -74,6 +74,11 @@ def apply_theme(app: QApplication) -> None:
             selection-color: #263238;
         }
         QLineEdit:read-only { background: #eef2f6; color: #5d6b78; }
+        QLineEdit:disabled, QTextEdit:disabled, QPlainTextEdit:disabled,
+        QSpinBox:disabled, QDoubleSpinBox:disabled, QComboBox:disabled,
+        QDateEdit:disabled {
+            background: #edf0f3; color: #aab3bd; border-color: #e1e5ea;
+        }
         QPushButton {
             min-height: 30px; padding: 4px 13px; border: 1px solid #d3dbe5;
             border-radius: 6px; background: #ffffff;
@@ -159,7 +164,11 @@ def apply_theme(app: QApplication) -> None:
         QListWidget::item:selected, QTreeWidget::item:selected {
             color: #263238; background: #ffe8ed;
         }
+        QListWidget::item:disabled, QTreeWidget::item:disabled {
+            color: #9aa5b1; background: transparent;
+        }
         QCheckBox, QRadioButton { spacing: 7px; min-height: 26px; }
+        QCheckBox:disabled, QRadioButton:disabled { color: #aab3bd; }
         QSlider::groove:horizontal {
             height: 6px; border-radius: 3px; background: #e2e8ee;
         }
