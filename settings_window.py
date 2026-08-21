@@ -1,6 +1,6 @@
 """综合设置窗口：相框/信箱/同步/联机身份/纪念日/通用 六个标签页。"""
 from __future__ import annotations
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, Signal, Qt, QTimer
@@ -842,7 +842,9 @@ class SettingsWindow(QMainWindow):
         # 简单校验 MM-DD
         try:
             month, day = md.split("-")
-            int(month), int(day)
+            month_num, day_num = int(month), int(day)
+            date(2000, month_num, day_num)
+            md = f"{month_num:02d}-{day_num:02d}"
         except (ValueError, IndexError):
             QMessageBox.warning(self, "格式错误", "请输入 MM-DD 格式，如 08-14")
             return
