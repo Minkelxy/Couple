@@ -170,12 +170,27 @@ class InboxWindow(QMainWindow):
             empty.setFlags(Qt.NoItemFlags)
             empty.setTextAlignment(Qt.AlignCenter)
             self._list.addItem(empty)
-        self._preview.setText(
-            "<div style='text-align:center;color:#aaa;padding:40px'>"
-            "选择左侧信件查看预览"
+        self._set_preview_hint(bool(items))
+        self._del_btn.setEnabled(False)
+
+    def _set_preview_hint(self, has_items: bool) -> None:
+        """Show a calm, contextual preview state before a letter is selected."""
+        if has_items:
+            title = "选择一封信"
+            detail = "暂无预览内容"
+        elif self._mode == "inbox":
+            title = "收件箱还很安静"
+            detail = "暂无已送达信件"
+        else:
+            title = "还没有待送达草稿"
+            detail = "暂无安排中的信件"
+        self._preview.setHtml(
+            "<div style='text-align:center;padding:72px 28px;'>"
+            "<div style='font-size:30px;color:#e85d75;margin-bottom:12px;'>♡</div>"
+            f"<div style='font-size:17px;font-weight:600;color:#52616d;'>{title}</div>"
+            f"<div style='font-size:13px;color:#9aa5b1;margin-top:8px;'>{detail}</div>"
             "</div>"
         )
-        self._del_btn.setEnabled(False)
 
     # ---------- 交互 ----------
 
