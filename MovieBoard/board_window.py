@@ -31,11 +31,11 @@ from common_utils import log_exception
 
 from . import report_generator, scraper, store
 
-# (status, 名称, emoji)
+# (status, 名称, accent)
 _COL_DEFS = [
-    (store.STATUS_WANT, "想看", "📌"),
-    (store.STATUS_WATCHING, "在看", "🎥"),
-    (store.STATUS_WATCHED, "看完", "✅"),
+    (store.STATUS_WANT, "想看", "#e85d75"),
+    (store.STATUS_WATCHING, "在看", "#6b8fd6"),
+    (store.STATUS_WATCHED, "看完", "#4f9b7a"),
 ]
 
 
@@ -107,12 +107,15 @@ class _MovieItemWidget(QWidget):
         poster = QLabel(self)
         poster.setFixedSize(60, 80)
         poster.setAlignment(Qt.AlignCenter)
-        poster.setStyleSheet("background:#eef2f6; border-radius:6px; color:#7b8794;")
+        poster.setStyleSheet(
+            "background:#eef2f6; border-radius:6px; color:#7b8794;"
+            "font-size:11px;"
+        )
         pm = self._load_poster(movie.get("poster_path", ""))
         if pm:
             poster.setPixmap(pm)
         else:
-            poster.setText("🎬")
+            poster.setText("暂无海报")
         lay.addWidget(poster)
 
         info = QWidget(self)
@@ -164,12 +167,12 @@ class _MovieItemWidget(QWidget):
         if status == store.STATUS_WATCHED:
             parts = []
             if isinstance(m, int):
-                parts.append(f"我:{m} ⭐")
+                parts.append(f"我:{m}")
             if isinstance(p, int):
-                parts.append(f"TA:{p} ⭐")
+                parts.append(f"TA:{p}")
             text = "  ".join(parts)
             if isinstance(m, int) and isinstance(p, int) and abs(m - p) >= 2:
-                text = "💥 " + text
+                text = "分差较大  " + text
             return text or "未评分"
         bits = []
         if isinstance(m, int):
@@ -180,7 +183,7 @@ class _MovieItemWidget(QWidget):
 
     @staticmethod
     def _partner_badge_text(ps) -> str:
-        """对方状态徽章文本，如 'TA: 想看 ⭐8' / 'TA: 已看'。"""
+        """对方状态徽章文本，如 'TA: 想看 / 8' / 'TA: 已看'。"""
         if not ps:
             return ""
         status = ps.get("status")
@@ -188,7 +191,7 @@ class _MovieItemWidget(QWidget):
         name_map = {"want": "想看", "watching": "在看", "watched": "已看"}
         name = name_map.get(status) if status else ""
         if isinstance(rating, int):
-            return f"TA: {name} ⭐{rating}" if name else f"TA: ⭐{rating}"
+            return f"TA: {name} / {rating}" if name else f"TA: / {rating}"
         return f"TA: {name}" if name else ""
 
 
@@ -278,7 +281,7 @@ class BoardWindow(QMainWindow):
 
     def __init__(self, hub=None) -> None:
         super().__init__()
-        self.setWindowTitle("影视看板 🎬")
+        self.setWindowTitle("影视看板")
         self.resize(1160, 740)
         self.setMinimumSize(980, 640)
         self._hub = hub
@@ -313,13 +316,13 @@ class BoardWindow(QMainWindow):
         bar.addLayout(heading)
         bar.addStretch(1)
 
-        add_btn = QPushButton("➕ 添加影视", central)
+        add_btn = QPushButton("添加影视", central)
         add_btn.setStyleSheet(_btn_style())
         add_btn.clicked.connect(self._on_add)
         bar.addWidget(add_btn)
         self._add_btn = add_btn
 
-        report_btn = QPushButton("📊 生成年度报告", central)
+        report_btn = QPushButton("生成年度报告", central)
         report_btn.setStyleSheet(_btn_style())
         report_btn.clicked.connect(self._on_report)
         bar.addWidget(report_btn)
@@ -328,29 +331,30 @@ class BoardWindow(QMainWindow):
         # 三栏
         cols = QHBoxLayout()
         cols.setSpacing(12)
-        for status, name, emoji in _COL_DEFS:
-            cols.addWidget(self._build_column(status, name, emoji), 1)
+        for status, name, accent in _COL_DEFS:
+            cols.addWidget(self._build_column(status, name, accent), 1)
         root.addLayout(cols, 1)
 
-    def _build_column(self, status: str, name: str, emoji: str) -> QWidget:
+    def _build_column(self, status: str, name: str, accent: str) -> QWidget:
         col = QWidget(self)
         cl = QVBoxLayout(col)
-        cl.setContentsMargins(0, 0, 0, 0)
+        cl.setContentsMargins(10, 8, 10, 10)
         cl.setSpacing(8)
         col.setObjectName("movieColumn")
         col.setStyleSheet(
-            "QWidget#movieColumn{background:#ffffff;border:1px solid #dfe5ec;"
-            "border-radius:8px;}"
+            f"QWidget#movieColumn{{background:#ffffff;border:1px solid #dfe5ec;"
+            f"border-top:3px solid {accent};border-radius:8px;}}"
         )
 
         head = QHBoxLayout()
+        head.setContentsMargins(2, 0, 2, 0)
         head.setSpacing(8)
-        title = QLabel(f"{name} {emoji}", col)
+        title = QLabel(name, col)
         title.setStyleSheet("font-size:16px; font-weight:700; color:#263238;")
         head.addWidget(title)
         badge = QLabel("0", col)
         badge.setStyleSheet(
-            "background:#e85d75; color:#fff; border-radius:9px;"
+            f"background:{accent}; color:#fff; border-radius:9px;"
             "padding:2px 8px; font-size:12px; min-width:14px;"
         )
         badge.setAlignment(Qt.AlignCenter)
@@ -363,7 +367,10 @@ class BoardWindow(QMainWindow):
         lw.setStyleSheet(
             "QListWidget{background:#f7f9fb; border:none; border-radius:7px;}"
             "QListWidget::item{border-bottom:1px solid #e8edf2;}"
+            "QListWidget::item:hover{background:#fff7f8;}"
+            "QListWidget::item:selected{background:#ffe8ed;}"
         )
+        lw.setSpacing(4)
         lw.customContextMenuRequested.connect(
             lambda pos, lw=lw, status=status: self._on_context_menu(lw, status, pos)
         )
@@ -398,7 +405,7 @@ class BoardWindow(QMainWindow):
             return
         # 搜索中：按钮变 loading 状态
         self._add_btn.setEnabled(False)
-        self._add_btn.setText("🔍 搜索中…")
+        self._add_btn.setText("搜索中...")
         worker = _SearchWorker(title)
         worker.found.connect(self._on_search_found)
         worker.failed.connect(lambda t=title: self._on_search_failed(t))
@@ -412,7 +419,7 @@ class BoardWindow(QMainWindow):
         self._worker = None
         # 恢复添加按钮
         self._add_btn.setEnabled(True)
-        self._add_btn.setText("➕ 添加影视")
+        self._add_btn.setText("添加影视")
 
     def _on_search_found(self, info: dict) -> None:
         store.add(
@@ -446,7 +453,7 @@ class BoardWindow(QMainWindow):
             return
 
         menu = QMenu(self)
-        for s, name, _emoji in _COL_DEFS:
+        for s, name, _accent in _COL_DEFS:
             if s == status:
                 continue
             act = QAction(f"移到{name}", self)
@@ -455,13 +462,13 @@ class BoardWindow(QMainWindow):
             )
             menu.addAction(act)
         menu.addSeparator()
-        rate_act = QAction("📝 评分短评", self)
+        rate_act = QAction("评分与短评", self)
         rate_act.triggered.connect(
             lambda checked=False, mid=movie_id: self._edit_rating(mid)
         )
         menu.addAction(rate_act)
         menu.addSeparator()
-        del_act = QAction("🗑 删除", self)
+        del_act = QAction("删除", self)
         del_act.triggered.connect(
             lambda checked=False, mid=movie_id: self._delete(mid)
         )
