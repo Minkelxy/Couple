@@ -145,6 +145,12 @@ class ReadLetterWindow(QMainWindow):
                     except Exception:
                         log_exception("附件渲染失败")
                         layout.addWidget(QLabel("(附件无法显示)", self))
+            else:
+                unavailable = QLabel("附件暂时不可用，可能已被删除或尚未同步", self)
+                unavailable.setStyleSheet(
+                    "color:#9aa5b1;font-size:13px;padding:8px 0;"
+                )
+                layout.addWidget(unavailable)
 
         layout.addStretch(1)
 
