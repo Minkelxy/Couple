@@ -43,6 +43,7 @@ def _resolve_checkin_image(image_path: str) -> str:
 
 # 心情按钮顺序：😊(5) 😍(4) 😢(3) 😡(2) 😴(1)
 _MOOD_CHOICES = [(5, "😊"), (4, "😍"), (3, "😢"), (2, "😡"), (1, "😴")]
+_MOOD_LABELS = {5: "开心", 4: "喜爱", 3: "伤心", 2: "生气", 1: "困倦"}
 
 # 当前 CheckinWindow 实例，供模块级事件处理刷新 UI
 # 用弱引用：窗口关闭且无其他强引用时可被 GC，避免内存泄漏
@@ -149,6 +150,8 @@ class CheckinEditor(QDialog):
         for mood_val, emoji in _MOOD_CHOICES:
             btn = QPushButton(emoji, self)
             btn.setFixedSize(48, 48)
+            btn.setToolTip(_MOOD_LABELS[mood_val])
+            btn.setAccessibleName(_MOOD_LABELS[mood_val])
             btn.setCheckable(True)
             btn.setStyleSheet(
                 "QPushButton{font-size:24px; border:2px solid #dfe5ec;"
