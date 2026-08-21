@@ -71,7 +71,7 @@ class SettingsWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("设置 ⚙")
+        self.setWindowTitle("设置")
         self.resize(720, 780)
         self.setMinimumSize(660, 720)
         self._build_ui()
@@ -95,19 +95,21 @@ class SettingsWindow(QMainWindow):
         root.addLayout(header)
 
         tabs = QTabWidget(self)
-        tabs.addTab(self._build_photo_frame_tab(), "🖼 相框")
-        tabs.addTab(self._build_mailbox_tab(), "✉ 信箱")
-        tabs.addTab(self._build_sync_tab(), "🔄 同步")
-        tabs.addTab(self._build_identity_tab(), "🔐 联机身份")
-        tabs.addTab(self._build_anniversary_tab(), "🎉 纪念日")
-        tabs.addTab(self._build_general_tab(), "⚙ 通用")
+        tabs.setDocumentMode(True)
+        tabs.setUsesScrollButtons(True)
+        tabs.addTab(self._build_photo_frame_tab(), "相框")
+        tabs.addTab(self._build_mailbox_tab(), "信箱")
+        tabs.addTab(self._build_sync_tab(), "同步")
+        tabs.addTab(self._build_identity_tab(), "联机身份")
+        tabs.addTab(self._build_anniversary_tab(), "纪念日")
+        tabs.addTab(self._build_general_tab(), "通用")
         self._tabs = tabs
         root.addWidget(tabs, 1)
 
         # 底部保存按钮
         btn_row = QHBoxLayout()
         btn_row.addStretch(1)
-        save_btn = QPushButton("💾 保存设置", self)
+        save_btn = QPushButton("保存设置", self)
         save_btn.setToolTip("保存所有设置并立即生效")
         save_btn.setStyleSheet(
             "QPushButton{background:#e85d75;color:#fff;border:none;"
@@ -343,7 +345,7 @@ class SettingsWindow(QMainWindow):
         outer.setSpacing(10)
 
         # 1. 我
-        grp_me = QGroupBox("🧑 我的身份")
+        grp_me = QGroupBox("我的身份")
         form_me = QFormLayout(grp_me)
         self._id_my_fp = QLineEdit()
         self._id_my_fp.setReadOnly(True)
@@ -371,7 +373,7 @@ class SettingsWindow(QMainWindow):
         outer.addWidget(grp_me)
 
         # 2. 对方
-        grp_them = QGroupBox("💑 对方身份（未配对则为空）")
+        grp_them = QGroupBox("对方身份（未配对则为空）")
         form_them = QFormLayout(grp_them)
         self._id_them_nick = QLineEdit()
         self._id_them_nick.setReadOnly(True)
@@ -402,14 +404,14 @@ class SettingsWindow(QMainWindow):
         self._id_channel.setPlaceholderText("尚未配对")
         form_them.addRow("专属通道 ID:", self._id_channel)
         row5 = QHBoxLayout()
-        self._btn_reset_partner = QPushButton("⚠ 解除配对")
+        self._btn_reset_partner = QPushButton("解除配对")
         self._btn_reset_partner.clicked.connect(self._on_reset_partner)
         row5.addStretch(1); row5.addWidget(self._btn_reset_partner)
         form_them.addRow(row5)
         outer.addWidget(grp_them)
 
         # 3. 配对向导
-        grp_pair = QGroupBox("🤝 开始配对（仅第一次需要，之后不用再填任何码）")
+        grp_pair = QGroupBox("开始配对（仅第一次需要，之后不用再填任何码）")
         pv = QVBoxLayout(grp_pair)
         tip = QLabel("配对是一次性的，完成后你们两台电脑会互相认出彼此，不需要再填任何识别码。"
                      "<br>两台电脑分别选择一个角色：一台发起（获得 6 位配对码），另一台输入（输入那 6 位码）。")
@@ -508,7 +510,7 @@ class SettingsWindow(QMainWindow):
         QMessageBox.information(
             self,
             "核对安全码",
-            f"请通过电话/微信等<u>安全渠道</u>让对方打开「设置 → 🔐 联机身份 → 安全码」，<br>"
+            f"请通过电话/微信等<u>安全渠道</u>让对方打开「设置 → 联机身份 → 安全码」，<br>"
             f"并念一下屏幕上的 6 位数字。<br><br>"
             f"你这边显示的安全码为：<br>"
             f"<div style='font-size:36px;font-weight:900;color:#e85d75;"
@@ -538,7 +540,7 @@ class SettingsWindow(QMainWindow):
         if not server:
             QMessageBox.warning(
                 self, "缺少云中转服务器",
-                "发起配对必须先在「🔄 同步」Tab 填好「云中转服务器地址」并保存。\n"
+                "发起配对必须先在「同步」页填好「云中转服务器地址」并保存。\n"
                 "（你们双方的消息都靠这台服务器的配对接口做公钥交换，局域网直连不需要交换公钥，但为了安全码可校验，仍要求走一次配对向导。）"
             )
             return
@@ -551,7 +553,7 @@ class SettingsWindow(QMainWindow):
         if not server:
             QMessageBox.warning(
                 self, "缺少云中转服务器",
-                "先到「🔄 同步」Tab 填好「云中转服务器地址」并保存。"
+                "先到「同步」页填好「云中转服务器地址」并保存。"
             )
             return
         token, ok = QInputDialog.getText(
@@ -615,7 +617,7 @@ class SettingsWindow(QMainWindow):
             ans = QMessageBox.question(
                 self, "核对安全码",
                 f"已收到「{nick}」的配对请求。<br><br>"
-                f"请让对方打开「设置 → 🔐 联机身份 → 安全码」念一下他屏幕上的 6 位数字，<br>"
+                f"请让对方打开「设置 → 联机身份 → 安全码」念一下他屏幕上的 6 位数字，<br>"
                 f"你这边显示的安全码为：<br>"
                 f"<div style='font-size:36px;font-weight:900;color:#e85d75;"
                 f"letter-spacing:12px;text-align:center;margin:12px 0;'>{safety}</div>"
@@ -631,7 +633,7 @@ class SettingsWindow(QMainWindow):
             self._pair_finished()
             self._refresh_identity_ui()
             self._pair_stage.setText(
-                f"✅ <b>配对成功！</b><br>"
+                f"<font color='#2f7d68'><b>配对成功！</b></font><br>"
                 f"专属通道 ID：{p.channel_id or ''}<br>"
                 f"你们之间的所有信件/照片/五子棋都由 Ed25519 签名校验，外人再也冒充不了。<br>"
                 f"如果以后想换配对对象，随时可以点「解除配对」重来。"
@@ -640,7 +642,9 @@ class SettingsWindow(QMainWindow):
         elif phase == PairingPhase.FAILED:
             self._pair_finished()
             msg = p.error_message or "配对失败"
-            self._pair_stage.setText(f"❌ 配对失败：{msg}")
+            self._pair_stage.setText(
+                f"<font color='#b04a5a'><b>配对失败：</b></font>{msg}"
+            )
 
     # ===== 通用标签页 =====
     def _build_general_tab(self) -> QWidget:
