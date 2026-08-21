@@ -35,6 +35,7 @@ class CalendarWidget(QWidget):
         # 顶部月份切换
         self._prev_btn = QPushButton("◀", self)
         self._prev_btn.setFixedWidth(36)
+        self._prev_btn.setToolTip("上个月")
         self._prev_btn.setStyleSheet(
             "QPushButton{border:none; font-size:16px; color:#d84f68;}"
             "QPushButton:hover{color:#b83d54;}"
@@ -49,6 +50,7 @@ class CalendarWidget(QWidget):
 
         self._next_btn = QPushButton("▶", self)
         self._next_btn.setFixedWidth(36)
+        self._next_btn.setToolTip("下个月")
         self._next_btn.setStyleSheet(
             "QPushButton{border:none; font-size:16px; color:#d84f68;}"
             "QPushButton:hover{color:#b83d54;}"
@@ -80,6 +82,17 @@ class CalendarWidget(QWidget):
                 )
                 layout.addWidget(cell, row + 2, col)
                 self._day_labels.append(cell)
+
+        legend = QLabel(
+            "<span style='color:#d84f68'>我的记录</span>&nbsp;&nbsp;"
+            "<span style='color:#4d7ea8'>对方记录</span>&nbsp;&nbsp;"
+            "<span style='color:#7b8794'>粉色边框：今天</span>",
+            self,
+        )
+        legend.setTextFormat(Qt.RichText)
+        legend.setAlignment(Qt.AlignCenter)
+        legend.setStyleSheet("font-size:11px;padding:4px 2px;color:#7b8794;")
+        layout.addWidget(legend, 8, 0, 1, 7)
 
     @staticmethod
     def _cell_style(is_today: bool, has_record: bool, has_partner: bool = False) -> str:
