@@ -191,6 +191,14 @@ class SettingsWindow(QMainWindow):
         self._album_list = QListWidget()
         self._album_list.setAlternatingRowColors(False)
         album_layout.addWidget(self._album_list, 1)
+        self._album_empty_hint = QLabel(
+            "暂无额外相册，可点击“添加相册”加入其他图片目录。"
+        )
+        self._album_empty_hint.setStyleSheet(
+            "color:#9aa5b1;font-size:12px;padding:4px 2px;"
+        )
+        self._album_empty_hint.setWordWrap(True)
+        album_layout.addWidget(self._album_empty_hint)
         album_btn_row = QHBoxLayout()
         add_album_btn = QPushButton("添加相册…")
         add_album_btn.setToolTip("选择一个文件夹作为新相册")
@@ -701,6 +709,7 @@ class SettingsWindow(QMainWindow):
                 item.setBackground(QBrush(_CURRENT_ALBUM_BG))
                 item.setToolTip("当前默认相册")
             self._album_list.addItem(item)
+        self._album_empty_hint.setVisible(self._album_list.count() == 0)
 
         # 相框纪念日
         self._pf_anniv_list.clear()
@@ -754,6 +763,7 @@ class SettingsWindow(QMainWindow):
         item = QListWidgetItem(f"{name}  →  {path}")
         item.setData(Qt.UserRole, path)
         self._album_list.addItem(item)
+        self._album_empty_hint.setVisible(False)
 
     def _set_current_album_from_list(self) -> None:
         row = self._album_list.currentRow()
@@ -788,6 +798,7 @@ class SettingsWindow(QMainWindow):
         item = QListWidgetItem(f"{name}  →  {path}")
         item.setData(Qt.UserRole, path)
         self._album_list.addItem(item)
+        self._album_empty_hint.setVisible(False)
 
     def _del_album(self) -> None:
         row = self._album_list.currentRow()
@@ -804,6 +815,7 @@ class SettingsWindow(QMainWindow):
         ) != QMessageBox.Yes:
             return
         item = self._album_list.takeItem(row)
+        self._album_empty_hint.setVisible(self._album_list.count() == 0)
         path = item.data(Qt.UserRole) or (
             item.text().split("→")[-1].strip() if "→" in item.text() else ""
         )
