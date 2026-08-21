@@ -443,7 +443,8 @@ class TravelMapWindow(QMainWindow):
     def _refresh(self) -> None:
         cities = store.list_all()
         n = store.count_visited()
-        self.stats_label.setText(f"已去过 {n} 个城市")
+        wishes = sum(1 for city in cities if city.get("type") == "wish")
+        self.stats_label.setText(f"已去过 {n} 个城市 · 愿望 {wishes} 个")
 
         route = self._route_cities[: self._route_index] if self._route_cities else None
 
