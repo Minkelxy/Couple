@@ -96,6 +96,7 @@ def pick_city_dialog(parent=None) -> dict | None:
         "QListWidget::item{padding:9px;border-radius:5px;}"
         "QListWidget::item:hover{background:#fff7f8;}"
         "QListWidget::item:selected{background:#ffe8ed;color:#263238;}"
+        "QListWidget::item:disabled{color:#9aa5b1;}"
     )
     layout.addWidget(list_widget)
 
@@ -110,6 +111,11 @@ def pick_city_dialog(parent=None) -> dict | None:
             list_widget.addItem(item)
         if list_widget.count() > 0:
             list_widget.setCurrentRow(0)
+        else:
+            empty = QListWidgetItem("没有匹配的城市")
+            empty.setFlags(Qt.NoItemFlags)
+            empty.setTextAlignment(Qt.AlignCenter)
+            list_widget.addItem(empty)
 
     search.textChanged.connect(_populate)
     _populate()
@@ -138,8 +144,10 @@ def pick_city_dialog(parent=None) -> dict | None:
     def _accept():
         cur = list_widget.currentItem()
         if cur is not None:
-            result["value"] = cur.data(Qt.UserRole)
-            dlg.accept()
+            value = cur.data(Qt.UserRole)
+            if isinstance(value, dict):
+                result["value"] = value
+                dlg.accept()
 
     ok_btn.clicked.connect(_accept)
     cancel_btn.clicked.connect(dlg.reject)
