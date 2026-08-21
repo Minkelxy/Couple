@@ -382,6 +382,7 @@ class BoardWindow(QMainWindow):
             "QListWidget::item{border-bottom:1px solid #e8edf2;}"
             "QListWidget::item:hover{background:#fff7f8;}"
             "QListWidget::item:selected{background:#ffe8ed;}"
+            "QListWidget::item:disabled{color:#9aa5b1;}"
         )
         lw.setSpacing(4)
         lw.customContextMenuRequested.connect(
@@ -399,10 +400,15 @@ class BoardWindow(QMainWindow):
             items = store.list_by_status(status)
             badge.setText(str(len(items)))
             if not items:
-                empty = QListWidgetItem("暂无影片")
+                status_name = next(
+                    (name for current, name, _accent in _COL_DEFS if current == status),
+                    "当前栏目",
+                )
+                empty = QListWidgetItem(f"{status_name}暂无影片")
                 empty.setFlags(Qt.NoItemFlags)
                 empty.setTextAlignment(Qt.AlignCenter)
                 empty.setForeground(QColor("#9aa5b1"))
+                empty.setToolTip("点击顶部“添加影视”将影片加入看板")
                 lw.addItem(empty)
                 continue
             for m in items:
