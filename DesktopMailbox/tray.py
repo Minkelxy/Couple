@@ -49,11 +49,11 @@ class TrayController(QObject):
     def _build_menu(self) -> None:
         menu = QMenu()
 
-        act_compose = QAction("✍ 写信…", menu)
+        act_compose = QAction("写信…", menu)
         act_compose.triggered.connect(self.compose_requested)
         menu.addAction(act_compose)
 
-        act_inbox = QAction("📬 信件箱…", menu)
+        act_inbox = QAction("信件箱…", menu)
         act_inbox.triggered.connect(self.inbox_requested)
         menu.addAction(act_inbox)
 
