@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from PySide6.QtCore import Qt, QThread, Signal, QUrl
-from PySide6.QtGui import QAction, QDesktopServices, QPixmap
+from PySide6.QtGui import QAction, QColor, QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
@@ -253,8 +253,12 @@ class _RatingDialog(QDialog):
         slider.setMinimum(1)
         slider.setMaximum(10)
         slider.setValue(int(rating) if isinstance(rating, int) else 7)
+        slider.setToolTip("评分范围：1 到 10 分")
+        slider.setMinimumWidth(180)
         slider.valueChanged.connect(lambda n: val.setText(str(n)))
+        row.addWidget(QLabel("1", page))
         row.addWidget(slider, 1)
+        row.addWidget(QLabel("10", page))
         l.addLayout(row)
 
         l.addWidget(QLabel("短评：", page))
@@ -385,6 +389,13 @@ class BoardWindow(QMainWindow):
             lw.clear()
             items = store.list_by_status(status)
             badge.setText(str(len(items)))
+            if not items:
+                empty = QListWidgetItem("暂无影片")
+                empty.setFlags(Qt.NoItemFlags)
+                empty.setTextAlignment(Qt.AlignCenter)
+                empty.setForeground(QColor("#9aa5b1"))
+                lw.addItem(empty)
+                continue
             for m in items:
                 m["partner_status"] = all_ps.get(str(m["id"]))
                 item = QListWidgetItem(lw)
