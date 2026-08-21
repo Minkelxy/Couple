@@ -80,6 +80,9 @@ def apply_theme(app: QApplication) -> None:
         }
         QPushButton:hover { background: #fff0f3; border-color: #e8a0ad; }
         QPushButton:pressed { background: #fbdde4; }
+        QPushButton:focus, QToolButton:focus {
+            border-color: #e85d75; color: #d84f68;
+        }
         QPushButton:disabled {
             color: #aab3bd; background: #edf0f3; border-color: #e1e5ea;
         }
