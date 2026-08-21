@@ -146,6 +146,9 @@ class StatsWindow(QMainWindow):
         )
         close_btn.clicked.connect(self.close)
         button_row = QHBoxLayout()
+        self._updated_label = QLabel("尚未刷新", self)
+        self._updated_label.setStyleSheet("color:#9aa5b1;font-size:12px;")
+        button_row.addWidget(self._updated_label)
         button_row.addStretch(1)
         button_row.addWidget(refresh_btn)
         button_row.addWidget(close_btn)
@@ -169,6 +172,7 @@ class StatsWindow(QMainWindow):
                 self._cards[3].setText(f"{name}（还有 {days_left} 天）")
             else:
                 self._cards[3].setText("未设置纪念日")
+            self._updated_label.setText(f"更新于 {datetime.now():%H:%M}")
 
     def _make_card(self, label: str, value: str, accent: str):
         card = QWidget(self)
