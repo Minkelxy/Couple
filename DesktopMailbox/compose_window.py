@@ -126,6 +126,7 @@ class ComposeWindow(QMainWindow):
             "border-radius:8px;padding:10px;font-size:15px;}"
             "QTextEdit:focus{border:1px solid #e85d75;}"
         )
+        self._body.textChanged.connect(self._update_send_state)
         root.addWidget(self._body, 1)
 
         # 附件
@@ -168,6 +169,7 @@ class ComposeWindow(QMainWindow):
 
         # 寄出按钮
         self._send_btn = QPushButton("寄出", self)
+        self._send_btn.setEnabled(False)
         self._send_btn.setStyleSheet(
             "QPushButton{background:#e85d75;color:#fff;border:none;"
             "border-radius:6px;padding:12px;font-size:15px;font-weight:600;}"
@@ -180,6 +182,9 @@ class ComposeWindow(QMainWindow):
         # 快捷键：Ctrl+Enter 寄出
         from PySide6.QtGui import QShortcut, QKeySequence
         QShortcut(QKeySequence("Ctrl+Return"), self, activated=self._on_send)
+
+    def _update_send_state(self) -> None:
+        self._send_btn.setEnabled(bool(self._body.toPlainText().strip()))
 
     # ---------- 附件 ----------
 
