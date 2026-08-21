@@ -106,12 +106,18 @@ class ComposeWindow(QMainWindow):
         root.addLayout(role_row)
 
         # 标题
+        title_label = QLabel("主题", self)
+        title_label.setStyleSheet("font-weight:600; color:#52616d;")
+        root.addWidget(title_label)
         self._title = QLineEdit(self)
         self._title.setPlaceholderText("给这封信起个标题…")
         self._title.setMinimumHeight(40)
         root.addWidget(self._title)
 
         # 正文
+        body_label = QLabel("正文", self)
+        body_label.setStyleSheet("font-weight:600; color:#52616d;")
+        root.addWidget(body_label)
         self._body = QTextEdit(self)
         self._body.setPlaceholderText("写点什么吧，时间到了对方才会看到…")
         self._body.setMinimumHeight(260)
@@ -123,6 +129,9 @@ class ComposeWindow(QMainWindow):
         root.addWidget(self._body, 1)
 
         # 附件
+        attachment_label = QLabel("图片附件", self)
+        attachment_label.setStyleSheet("font-weight:600; color:#52616d;")
+        root.addWidget(attachment_label)
         att_row = QHBoxLayout()
         self._att_btn = QPushButton("添加图片", self)
         self._att_btn.setToolTip("为信件添加一张图片附件")
