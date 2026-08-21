@@ -484,6 +484,8 @@ class TravelMapWindow(QMainWindow):
         self._route_timer.stop()
         self._route_cities = []
         self._route_index = 0
+        self.play_btn.setText("播放路线")
+        self.play_btn.setToolTip("按日期顺序播放已记录的旅行路线")
 
     # ---------- 添加城市 ----------
 
@@ -588,12 +590,18 @@ class TravelMapWindow(QMainWindow):
     # ---------- 路线动画 ----------
 
     def _on_play_route(self) -> None:
+        if self._route_timer.isActive():
+            self._reset_route()
+            self._refresh()
+            return
         self._route_cities = store.sorted_by_date()
         if not self._route_cities:
             QMessageBox.information(self, "提示", "还没有城市记录，先添加一些吧～")
             return
         self._route_index = 0
         self._route_timer.start()
+        self.play_btn.setText("停止播放")
+        self.play_btn.setToolTip("停止路线动画并恢复地图全览")
         self._refresh()
 
     def _on_route_tick(self) -> None:
@@ -602,6 +610,8 @@ class TravelMapWindow(QMainWindow):
             self._refresh()
         else:
             self._route_timer.stop()
+            self.play_btn.setText("播放路线")
+            self.play_btn.setToolTip("按日期顺序播放已记录的旅行路线")
 
     # ---------- 切换默认类型 ----------
 
