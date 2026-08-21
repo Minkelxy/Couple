@@ -118,6 +118,12 @@ class StatsWindow(QMainWindow):
         )
         for index, (label, accent) in enumerate(cards):
             card, value_lbl = self._make_card(label, "", accent)
+            card.setToolTip({
+                "在一起": "从共同开始日期计算的相处天数",
+                "信件": "已保存的信件总数和未读数量",
+                "照片": "当前相框相册中的照片数量",
+                "下个纪念日": "距离最近纪念日的剩余天数",
+            }.get(label, ""))
             self._cards.append(value_lbl)
             grid.addWidget(card, index // 2, index % 2)
         layout.addLayout(grid, 1)
@@ -162,7 +168,7 @@ class StatsWindow(QMainWindow):
                 name, days_left = next_anniv
                 self._cards[3].setText(f"{name}（还有 {days_left} 天）")
             else:
-                self._cards[3].setText("未设置")
+                self._cards[3].setText("未设置纪念日")
 
     def _make_card(self, label: str, value: str, accent: str):
         card = QWidget(self)
