@@ -128,8 +128,15 @@ class GalleryWindow(QMainWindow):
         if self._images:
             self._show_current()
         else:
-            self._label.setText("相册为空")
+            display_path = image_dir or "未选择相册"
+            self._label.setText(
+                f"当前相册没有照片\n{display_path}\n\n按 Esc 返回相册列表"
+            )
             self._label.setAlignment(Qt.AlignCenter)
+            self._label.setStyleSheet(
+                "QLabel{background:#10151a;color:#d9e0e6;"
+                "font-size:16px;line-height:1.5;}"
+            )
 
         # 悬浮层自动隐藏
         self._hide_timer = QTimer(self)
@@ -153,25 +160,46 @@ class GalleryWindow(QMainWindow):
         # 顶部悬浮工具栏
         self._toolbar = QFrame(central)
         self._toolbar.setStyleSheet(
-            "QFrame{background:rgba(20,25,30,205);border:none;}"
+            "QFrame{background:rgba(20,25,30,224);border:none;}"
             "QPushButton{background:rgba(255,255,255,28);color:#fff;"
             "border:1px solid rgba(255,255,255,55);border-radius:6px;"
-            "padding:8px 14px;font-size:13px;}"
+            "padding:7px 13px;font-size:13px;min-height:30px;}"
+            "QPushButton#primaryAction{background:#e85d75;border-color:#e85d75;"
+            "font-weight:600;}"
+            "QPushButton#primaryAction:hover{background:#f1778b;"
+            "border-color:#f1778b;}"
+            "QPushButton#quietAction{background:transparent;border-color:transparent;"
+            "color:rgba(255,255,255,190);}"
+            "QPushButton#quietAction:hover{background:rgba(255,255,255,24);"
+            "color:#fff;border-color:transparent;}"
             "QPushButton:hover{background:rgba(232,93,117,210);"
             "border-color:rgba(255,255,255,100);}"
         )
         tb_layout = QHBoxLayout(self._toolbar)
-        tb_layout.setContentsMargins(16, 10, 16, 10)
+        tb_layout.setContentsMargins(18, 10, 18, 10)
+        tb_layout.setSpacing(6)
         btn_effect = QPushButton("效果：普通")
-        btn_prev = QPushButton("← 上一张")
-        btn_play = QPushButton("▶ 自动播放")
-        btn_next = QPushButton("下一张 →")
-        btn_info = QPushButton("ℹ 信息")
-        btn_grid = QPushButton("🗂 网格")
-        btn_exit = QPushButton("✕ 退出")
-        for btn in (btn_prev, btn_play, btn_next, btn_info, btn_effect, btn_grid, btn_exit):
+        btn_prev = QPushButton("上一张")
+        btn_play = QPushButton("自动播放")
+        btn_next = QPushButton("下一张")
+        btn_info = QPushButton("照片信息")
+        btn_grid = QPushButton("返回网格")
+        btn_exit = QPushButton("退出")
+        btn_play.setObjectName("primaryAction")
+        btn_grid.setObjectName("quietAction")
+        btn_exit.setObjectName("quietAction")
+        for btn in (btn_prev, btn_play, btn_next):
             tb_layout.addWidget(btn)
         tb_layout.addStretch(1)
+        for btn in (btn_info, btn_effect, btn_grid, btn_exit):
+            tb_layout.addWidget(btn)
+        btn_prev.setToolTip("查看上一张照片")
+        btn_next.setToolTip("查看下一张照片")
+        btn_play.setToolTip("按设定间隔自动播放照片")
+        btn_info.setToolTip("查看当前照片的 EXIF 信息")
+        btn_effect.setToolTip("切换预览效果")
+        btn_grid.setToolTip("返回相册网格")
+        btn_exit.setToolTip("关闭全屏浏览")
         btn_prev.clicked.connect(self.show_prev)
         btn_play.clicked.connect(self._toggle_auto_play)
         btn_next.clicked.connect(self.show_next)
@@ -188,8 +216,9 @@ class GalleryWindow(QMainWindow):
         # 信息浮层（左上角，默认隐藏）
         self._info_label = QLabel(central)
         self._info_label.setStyleSheet(
-            "QLabel{background:rgba(0,0,0,180);color:#fff;padding:12px 16px;"
-            "font-size:13px;border-radius:8px;}"
+            "QLabel{background:rgba(20,25,30,224);color:#f5f7fa;"
+            "padding:12px 16px;font-size:13px;border:1px solid "
+            "rgba(255,255,255,45);border-radius:8px;}"
         )
         self._info_label.setParent(central)
         self._info_label.move(16, 60)
@@ -198,8 +227,8 @@ class GalleryWindow(QMainWindow):
         # 底部状态栏
         self._status = QLabel(central)
         self._status.setStyleSheet(
-            "QLabel{background:rgba(20,25,30,190);color:#fff;padding:8px 16px;"
-            "font-size:12px;border:none;}"
+            "QLabel{background:rgba(20,25,30,224);color:#d9e0e6;padding:8px 18px;"
+            "font-size:12px;border-top:1px solid rgba(255,255,255,35);}"
         )
         self._status.setParent(central)
         self._status.move(0, self.height() - 40)
@@ -275,10 +304,10 @@ class GalleryWindow(QMainWindow):
         self._auto_play = not self._auto_play
         if self._auto_play:
             self._auto_timer.start()
-            self._btn_play.setText("⏸ 停止")
+            self._btn_play.setText("停止播放")
         else:
             self._auto_timer.stop()
-            self._btn_play.setText("▶ 自动播放")
+            self._btn_play.setText("自动播放")
 
     # ---------- 信息浮层 ----------
     def _cycle_effect(self) -> None:
@@ -299,9 +328,9 @@ class GalleryWindow(QMainWindow):
         src = self._images[self._index]
         info = ip.read_exif_details(src)
         if not info:
-            self._info_label.setText(f"📷 {src.name}\n无 EXIF 信息")
+            self._info_label.setText(f"{src.name}\n无 EXIF 信息")
         else:
-            lines = [f"📷 {src.name}"]
+            lines = [src.name]
             lines.extend(f"{k}：{v}" for k, v in info.items())
             self._info_label.setText("\n".join(lines))
         self._info_label.adjustSize()
@@ -436,7 +465,7 @@ class GalleryGridWindow(QMainWindow):
 
     def __init__(self, hub=None) -> None:
         super().__init__()
-        self.setWindowTitle("相册浏览 🖼")
+        self.setWindowTitle("相册浏览")
         self.resize(960, 700)
         self.setMinimumSize(800, 560)
         self._gallery_win: GalleryWindow | None = None
@@ -487,8 +516,18 @@ class GalleryGridWindow(QMainWindow):
         layout.addLayout(header)
 
         # 顶部相册选择
-        top_row = QHBoxLayout()
-        top_row.addWidget(QLabel("相册"))
+        filter_bar = QFrame(self)
+        filter_bar.setObjectName("filterBar")
+        filter_bar.setStyleSheet(
+            "QFrame#filterBar{background:#ffffff;border:1px solid #dfe5ec;"
+            "border-radius:8px;}"
+        )
+        top_row = QHBoxLayout(filter_bar)
+        top_row.setContentsMargins(12, 8, 12, 8)
+        top_row.setSpacing(8)
+        album_label = QLabel("相册", filter_bar)
+        album_label.setStyleSheet("font-weight:600;color:#52616d;")
+        top_row.addWidget(album_label)
         self._album_combo = QComboBox()
         self._album_combo.setStyleSheet(
             "QComboBox{padding:6px 9px;border:1px solid #d7dee8;"
@@ -513,10 +552,12 @@ class GalleryGridWindow(QMainWindow):
         self._favorites_check = QCheckBox("仅看收藏")
         self._favorites_check.toggled.connect(self._on_favorites_changed)
         top_row.addWidget(self._favorites_check)
-        layout.addLayout(top_row)
+        layout.addWidget(filter_bar)
 
         self._grid_status = QLabel("正在读取照片…", self)
-        self._grid_status.setStyleSheet("color:#7b8794; font-size:12px;")
+        self._grid_status.setStyleSheet(
+            "color:#687582; font-size:12px; padding:1px 2px;"
+        )
         layout.addWidget(self._grid_status)
 
         # 网格
@@ -527,10 +568,13 @@ class GalleryGridWindow(QMainWindow):
         self._grid.setGridSize(QSize(210, 240))
         self._grid.setFlow(QListWidget.LeftToRight)
         self._grid.setWrapping(True)
-        self._grid.setSpacing(8)
+        self._grid.setUniformItemSizes(True)
+        self._grid.setSpacing(10)
         self._grid.setStyleSheet(
-            "QListWidget{background:#ffffff;border:1px solid #dfe5ec;border-radius:8px;}"
-            "QListWidget::item{border-radius:6px;padding:4px;}"
+            "QListWidget{background:#ffffff;border:1px solid #dfe5ec;border-radius:8px;"
+            "padding:8px;}"
+            "QListWidget::item{border:1px solid transparent;border-radius:7px;padding:5px;}"
+            "QListWidget::item:hover{background:#fff7f8;border-color:#f1c2cb;}"
             "QListWidget::item:selected{background:#ffe8ed;}"
         )
         self._grid.itemDoubleClicked.connect(self._on_item_double_clicked)
