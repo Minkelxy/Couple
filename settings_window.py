@@ -338,6 +338,14 @@ class SettingsWindow(QMainWindow):
         pf_layout = QVBoxLayout(pf_group)
         self._pf_anniv_list = QListWidget()
         pf_layout.addWidget(self._pf_anniv_list)
+        self._anniv_empty_hint = QLabel(
+            "暂无纪念日，添加后相框会在当天使用主题色。"
+        )
+        self._anniv_empty_hint.setStyleSheet(
+            "color:#9aa5b1;font-size:12px;padding:4px 2px;"
+        )
+        self._anniv_empty_hint.setWordWrap(True)
+        pf_layout.addWidget(self._anniv_empty_hint)
         pf_row = QHBoxLayout()
         self._pf_anniv_input = QLineEdit()
         self._pf_anniv_input.setPlaceholderText("如 08-14")
@@ -715,6 +723,7 @@ class SettingsWindow(QMainWindow):
         self._pf_anniv_list.clear()
         for md in pf.get("anniversaries", []) or []:
             self._pf_anniv_list.addItem(str(md))
+        self._anniv_empty_hint.setVisible(self._pf_anniv_list.count() == 0)
 
         mb = mb_config.load()
         self._mb_my_name.setText(str(mb.get("my_name", "我")))
@@ -842,12 +851,14 @@ class SettingsWindow(QMainWindow):
             if self._pf_anniv_list.item(i).text() == md:
                 return
         self._pf_anniv_list.addItem(md)
+        self._anniv_empty_hint.setVisible(False)
         self._pf_anniv_input.clear()
 
     def _del_pf_anniv(self) -> None:
         row = self._pf_anniv_list.currentRow()
         if row >= 0:
             self._pf_anniv_list.takeItem(row)
+            self._anniv_empty_hint.setVisible(self._pf_anniv_list.count() == 0)
 
     # ===== 保存 =====
     def _collect_albums_from_list(self) -> list[dict]:
