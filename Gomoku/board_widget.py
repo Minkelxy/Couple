@@ -39,7 +39,10 @@ class GomokuBoard(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing, True)
         # 木质背景
-        p.fillRect(self.rect(), QColor(222, 184, 135))
+        p.fillRect(self.rect(), QColor("#dfb77f"))
+        p.setPen(QPen(QColor("#b8844e"), 2))
+        p.setBrush(Qt.NoBrush)
+        p.drawRect(1, 1, self.width() - 3, self.height() - 3)
         # 网格线
         p.setPen(QPen(QColor(60, 40, 20), 1))
         for i in range(SIZE):
@@ -59,6 +62,14 @@ class GomokuBoard(QWidget):
                 color = self._grid[r][c]
                 if color:
                     self._draw_stone(p, r, c, color)
+        # 最近一步使用珊瑚色外圈标出，帮助双方快速确认落子位置。
+        if self._moves:
+            row, col, _color = self._moves[-1]
+            cx = MARGIN + col * CELL
+            cy = MARGIN + row * CELL
+            p.setBrush(Qt.NoBrush)
+            p.setPen(QPen(QColor("#e85d75"), 2))
+            p.drawEllipse(cx - 18, cy - 18, 36, 36)
 
     def _draw_stone(self, p: QPainter, row: int, col: int, color: int) -> None:
         cx = MARGIN + col * CELL

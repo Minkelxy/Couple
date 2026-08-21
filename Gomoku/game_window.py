@@ -108,7 +108,7 @@ class HistoryWindow(QDialog):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("对局历史 ♟")
+        self.setWindowTitle("对局历史")
         self.resize(860, 680)
         self.setMinimumSize(760, 580)
         self._build_ui()
@@ -128,6 +128,15 @@ class HistoryWindow(QDialog):
         left.addWidget(hint)
         self._list = QListWidget(self)
         self._list.setMinimumWidth(280)
+        self._list.setAlternatingRowColors(True)
+        self._list.setSpacing(2)
+        self._list.setStyleSheet(
+            "QListWidget{background:#ffffff;border:1px solid #dfe5ec;"
+            "border-radius:8px;padding:4px;}"
+            "QListWidget::item{padding:8px 7px;border-radius:5px;}"
+            "QListWidget::item:hover{background:#fff7f8;}"
+            "QListWidget::item:selected{background:#ffe8ed;color:#263238;}"
+        )
         self._list.itemDoubleClicked.connect(self._on_double)
         left.addWidget(self._list, 1)
         lay.addLayout(left, 0)
@@ -198,7 +207,7 @@ class GameWindow(QMainWindow):
 
         self._suppress_open_show_event = False
 
-        self.setWindowTitle("联机五子棋 ♟")
+        self.setWindowTitle("联机五子棋")
         self.resize(760, 720)
         self.setMinimumSize(700, 680)
         self._build_ui()
@@ -225,18 +234,31 @@ class GameWindow(QMainWindow):
         bar.addLayout(heading)
         bar.addStretch(1)
 
-        self._invite_btn = QPushButton("📨 邀请对方", self)
-        self._undo_btn = QPushButton("↩ 悔棋", self)
-        self._restart_btn = QPushButton("🔄 重新开局", self)
-        self._history_btn = QPushButton("📜 对局历史", self)
+        self._invite_btn = QPushButton("邀请对方", self)
+        self._undo_btn = QPushButton("悔棋", self)
+        self._restart_btn = QPushButton("重新开局", self)
+        self._history_btn = QPushButton("对局历史", self)
+        primary_style = (
+            "QPushButton{background:#e85d75;color:#fff;border:none;"
+            "border-radius:6px;padding:8px 14px;font-size:13px;font-weight:600;}"
+            "QPushButton:hover{background:#d94f68;}"
+            "QPushButton:disabled{background:#d9dee4;color:#fff;}"
+        )
+        secondary_style = (
+            "QPushButton{background:#ffffff;color:#52616d;"
+            "border:1px solid #d7dee8;border-radius:6px;padding:8px 14px;"
+            "font-size:13px;}"
+            "QPushButton:hover{background:#fff0f3;border-color:#e8a0ad;}"
+            "QPushButton:disabled{background:#edf0f3;color:#aab3bd;border-color:#e1e5ea;}"
+        )
+        self._invite_btn.setStyleSheet(primary_style)
+        for b in (self._undo_btn, self._restart_btn, self._history_btn):
+            b.setStyleSheet(secondary_style)
+        self._invite_btn.setToolTip("向对方发送一局五子棋邀请")
+        self._undo_btn.setToolTip("向对方请求撤销最近两步")
+        self._restart_btn.setToolTip("结束当前对局并重新开始")
+        self._history_btn.setToolTip("查看已完成的对局记录")
         for b in (self._invite_btn, self._undo_btn, self._restart_btn, self._history_btn):
-            b.setStyleSheet(
-                "QPushButton{background:#ffffff;color:#d84f68;"
-                "border:1px solid #e8a0ad;border-radius:6px;padding:8px 14px;"
-                "font-size:13px;}"
-                "QPushButton:hover{background:#fff0f3;}"
-                "QPushButton:disabled{background:#edf0f3;color:#aab3bd;border-color:#e1e5ea;}"
-            )
             bar.addWidget(b)
         self._invite_btn.clicked.connect(self.start_invite)
         self._undo_btn.clicked.connect(self._on_undo)
