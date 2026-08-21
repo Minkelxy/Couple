@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton,
     QSpinBox, QTabWidget, QVBoxLayout, QWidget, QColorDialog, QGroupBox,
     QDoubleSpinBox, QRadioButton, QButtonGroup, QProgressBar, QInputDialog,
+    QFrame, QScrollArea,
 )
 
 import autostart
@@ -97,12 +98,17 @@ class SettingsWindow(QMainWindow):
         tabs = QTabWidget(self)
         tabs.setDocumentMode(True)
         tabs.setUsesScrollButtons(True)
-        tabs.addTab(self._build_photo_frame_tab(), "相框")
-        tabs.addTab(self._build_mailbox_tab(), "信箱")
-        tabs.addTab(self._build_sync_tab(), "同步")
-        tabs.addTab(self._build_identity_tab(), "联机身份")
-        tabs.addTab(self._build_anniversary_tab(), "纪念日")
-        tabs.addTab(self._build_general_tab(), "通用")
+        tab_pages = (
+            ("相框", self._build_photo_frame_tab(), "轮播、相册与显示效果"),
+            ("信箱", self._build_mailbox_tab(), "昵称与信件投递"),
+            ("同步", self._build_sync_tab(), "局域网、云中转与端口"),
+            ("联机身份", self._build_identity_tab(), "配对、公钥与安全码"),
+            ("纪念日", self._build_anniversary_tab(), "起始日与相框纪念日"),
+            ("通用", self._build_general_tab(), "应用行为与启动选项"),
+        )
+        for label, page, tooltip in tab_pages:
+            tabs.addTab(self._wrap_tab(page), label)
+            tabs.setTabToolTip(tabs.count() - 1, tooltip)
         self._tabs = tabs
         root.addWidget(tabs, 1)
 
@@ -119,6 +125,17 @@ class SettingsWindow(QMainWindow):
         save_btn.clicked.connect(self._on_save)
         btn_row.addWidget(save_btn)
         root.addLayout(btn_row)
+
+    @staticmethod
+    def _wrap_tab(page: QWidget) -> QScrollArea:
+        """Keep long settings pages usable at smaller window sizes."""
+        scroll = QScrollArea()
+        scroll.setObjectName("settingsScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidget(page)
+        return scroll
 
     # ===== 相框标签页 =====
     def _build_photo_frame_tab(self) -> QWidget:
