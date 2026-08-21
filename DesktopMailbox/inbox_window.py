@@ -82,6 +82,7 @@ class InboxWindow(QMainWindow):
             "QListWidget::item{padding:8px 7px;border-radius:5px;}"
             "QListWidget::item:hover{background:#fff7f8;}"
             "QListWidget::item:selected{background:#ffe8ed;color:#263238;}"
+            "QListWidget::item:disabled{color:#9aa5b1;}"
         )
         self._list.itemClicked.connect(self._on_item_clicked)
         self._preview = QTextBrowser(self)
@@ -161,6 +162,14 @@ class InboxWindow(QMainWindow):
             item = QListWidgetItem(label)
             item.setData(Qt.UserRole, it["id"])
             self._list.addItem(item)
+        if not items:
+            empty_text = (
+                "暂无已送达信件" if self._mode == "inbox" else "暂无待送达草稿"
+            )
+            empty = QListWidgetItem(empty_text)
+            empty.setFlags(Qt.NoItemFlags)
+            empty.setTextAlignment(Qt.AlignCenter)
+            self._list.addItem(empty)
         self._preview.setText(
             "<div style='text-align:center;color:#aaa;padding:40px'>"
             "选择左侧信件查看预览"
