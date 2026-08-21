@@ -136,6 +136,7 @@ class HistoryWindow(QDialog):
             "QListWidget::item{padding:8px 7px;border-radius:5px;}"
             "QListWidget::item:hover{background:#fff7f8;}"
             "QListWidget::item:selected{background:#ffe8ed;color:#263238;}"
+            "QListWidget::item:disabled{color:#9aa5b1;}"
         )
         self._list.itemDoubleClicked.connect(self._on_double)
         left.addWidget(self._list, 1)
@@ -149,7 +150,15 @@ class HistoryWindow(QDialog):
 
     def _refresh(self) -> None:
         self._list.clear()
-        for g in store.list_games():
+        games = store.list_games()
+        if not games:
+            empty = QListWidgetItem("暂无对局记录，完成一局后会显示在这里")
+            empty.setFlags(Qt.NoItemFlags)
+            empty.setTextAlignment(Qt.AlignCenter)
+            empty.setToolTip("完成一局五子棋后可在这里双击回放")
+            self._list.addItem(empty)
+            return
+        for g in games:
             winner = g.get("winner", "?")
             n = g.get("moves_count", 0)
             ts = g.get("played_at", "")[:16].replace("T", " ")
