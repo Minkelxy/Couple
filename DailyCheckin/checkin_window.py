@@ -165,6 +165,11 @@ class CheckinEditor(QDialog):
             mood_row.addWidget(btn)
         mood_row.addStretch(1)
         layout.addLayout(mood_row)
+        self._mood_selected_label = QLabel("已选择：未选择", self)
+        self._mood_selected_label.setStyleSheet(
+            "color:#7b8794;font-size:12px;padding-left:2px;"
+        )
+        layout.addWidget(self._mood_selected_label)
 
         # 一句话
         text_label = QLabel("一句话记录：", self)
@@ -212,6 +217,9 @@ class CheckinEditor(QDialog):
     def _select_mood(self, mood: int) -> None:
         self._mood = mood
         self._save_btn.setEnabled(mood > 0)
+        self._mood_selected_label.setText(
+            f"已选择：{_MOOD_LABELS.get(mood, '未选择')}"
+        )
 
     def _pick_image(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -246,6 +254,9 @@ class CheckinEditor(QDialog):
         if rec["mood"] in self._mood_buttons:
             self._mood_buttons[rec["mood"]].setChecked(True)
             self._save_btn.setEnabled(True)
+            self._mood_selected_label.setText(
+                f"已选择：{_MOOD_LABELS.get(rec['mood'], '未选择')}"
+            )
         self._text_edit.setText(rec["text"] or "")
         if rec["image_path"]:
             self._image_path = rec["image_path"]
