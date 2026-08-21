@@ -286,6 +286,14 @@ class SettingsWindow(QMainWindow):
         self._mode_cloud.toggled.connect(self._update_cloud_visibility)
         self._mode_both.toggled.connect(self._update_cloud_visibility)
 
+        self._sync_mode_hint = QLabel(self)
+        self._sync_mode_hint.setWordWrap(True)
+        self._sync_mode_hint.setStyleSheet(
+            "color:#52616d;font-size:12px;padding:8px 10px;"
+            "background:#f7f9fb;border:1px solid #dfe5ec;border-radius:6px;"
+        )
+        layout.addRow(self._sync_mode_hint)
+
         hint = QLabel("提示：两台电脑互填对方 IP 即可互相寄信。端口默认 52014。")
         hint.setStyleSheet("color:#7b8794; font-size:12px;")
         hint.setWordWrap(True)
@@ -296,6 +304,13 @@ class SettingsWindow(QMainWindow):
     def _update_cloud_visibility(self) -> None:
         show_cloud = self._mode_cloud.isChecked() or self._mode_both.isChecked()
         self._cloud_group.setVisible(show_cloud)
+        if self._mode_cloud.isChecked():
+            text = "云中转：两台客户端都连接 Ubuntu 服务器，适合不在同一局域网的设备。"
+        elif self._mode_both.isChecked():
+            text = "两者：优先使用局域网直连，无法直连时再通过 Ubuntu 服务器中转。"
+        else:
+            text = "局域网：两台客户端处于同一网络时互填对方 IP，延迟最低。"
+        self._sync_mode_hint.setText(text)
 
     def _sync_blur_mutual_exclusion(self) -> None:
         """Ken Burns 与 模糊背景 互斥：一个勾选时自动取消另一个。"""
