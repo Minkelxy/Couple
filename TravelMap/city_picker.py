@@ -62,7 +62,7 @@ def pick_city_dialog(parent=None) -> dict | None:
     选中后返回 {name, lat, lng}，取消返回 None。
     """
     dlg = QDialog(parent)
-    dlg.setWindowTitle("选择城市 🏙")
+    dlg.setWindowTitle("选择城市")
     dlg.resize(360, 520)
     dlg.setMinimumSize(320, 460)
 
@@ -79,6 +79,7 @@ def pick_city_dialog(parent=None) -> dict | None:
 
     search = QLineEdit(dlg)
     search.setPlaceholderText("搜索城市名…")
+    search.setClearButtonEnabled(True)
     search.setStyleSheet(
         "QLineEdit{padding:8px 10px;border:1px solid #d7dee8;"
         "border-radius:6px;font-size:14px;background:#ffffff;}"
@@ -87,11 +88,14 @@ def pick_city_dialog(parent=None) -> dict | None:
     layout.addWidget(search)
 
     list_widget = QListWidget(dlg)
+    list_widget.setAlternatingRowColors(True)
+    list_widget.setSpacing(2)
     list_widget.setStyleSheet(
         "QListWidget{border:1px solid #dfe5ec;border-radius:7px;"
-        "font-size:14px;background:#ffffff;}"
-        "QListWidget::item{padding:9px;}"
-        "QListWidget::item:selected{background:#ffe8ed;color:#d84f68;}"
+        "font-size:14px;background:#ffffff;padding:4px;}"
+        "QListWidget::item{padding:9px;border-radius:5px;}"
+        "QListWidget::item:hover{background:#fff7f8;}"
+        "QListWidget::item:selected{background:#ffe8ed;color:#263238;}"
     )
     layout.addWidget(list_widget)
 

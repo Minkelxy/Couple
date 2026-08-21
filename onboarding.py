@@ -19,7 +19,7 @@ class OnboardingWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("欢迎使用桌面相册 💕")
+        self.setWindowTitle("欢迎使用桌面相册")
         self.resize(520, 500)
         self.setMinimumSize(480, 460)
         self._build_ui()
@@ -60,6 +60,7 @@ class OnboardingWindow(QMainWindow):
         dir_row = QHBoxLayout()
         self._image_dir = QLineEdit(str(app_paths.IMAGES_DIR), self)
         browse_btn = QPushButton("浏览…", self)
+        browse_btn.setToolTip("选择桌面相框使用的照片目录")
         browse_btn.clicked.connect(self._browse_dir)
         dir_row.addWidget(self._image_dir, 1)
         dir_row.addWidget(browse_btn)
@@ -88,7 +89,7 @@ class OnboardingWindow(QMainWindow):
         skip_btn = QPushButton("跳过，用默认值", self)
         skip_btn.setStyleSheet("padding:9px 14px; color:#7b8794;")
         skip_btn.clicked.connect(self._on_skip)
-        finish_btn = QPushButton("完成 ✅", self)
+        finish_btn = QPushButton("完成", self)
         finish_btn.setStyleSheet(
             "QPushButton{background:#e85d75;color:#fff;border:none;"
             "border-radius:6px;padding:10px 20px;font-size:15px;font-weight:600;}"
