@@ -84,7 +84,7 @@ class StatsWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("统计看板 📊")
+        self.setWindowTitle("统计看板")
         self.resize(520, 420)
         self.setMinimumSize(460, 380)
         # 保存子控件引用，refresh() 时重设数据

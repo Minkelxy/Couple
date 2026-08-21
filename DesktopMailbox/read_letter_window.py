@@ -8,6 +8,7 @@ from PIL import Image
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
+    QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -36,7 +37,7 @@ class ReadLetterWindow(QMainWindow):
         )
         self._meta = meta  # 始终初始化，meta 不存在则为 None，保证后续方法不 AttributeError
 
-        self.setWindowTitle("一封信 ✉" if meta is None else f"一封信 ✉ · {meta['title']}")
+        self.setWindowTitle("一封信" if meta is None else f"一封信 · {meta['title']}")
         self.resize(640, 720)
         self.setMinimumSize(560, 620)
 
@@ -83,11 +84,16 @@ class ReadLetterWindow(QMainWindow):
         layout.addWidget(meta_lbl)
 
         # 分隔
-        sep = QLabel("—" * 30, self)
+        sep = QFrame(self)
+        sep.setFrameShape(QFrame.HLine)
+        sep.setFrameShadow(QFrame.Sunken)
         sep.setStyleSheet("color:#dfe5ec;")
         layout.addWidget(sep)
 
         # 正文
+        body_title = QLabel("正文", self)
+        body_title.setStyleSheet("color:#52616d;font-size:13px;font-weight:600;")
+        layout.addWidget(body_title)
         content = letter_store.read_content(letter_id)
         body = QLabel(content, self)
         body.setWordWrap(True)
@@ -100,6 +106,11 @@ class ReadLetterWindow(QMainWindow):
 
         # 附件
         if meta["has_attachment"]:
+            attachment_title = QLabel("附件", self)
+            attachment_title.setStyleSheet(
+                "color:#52616d;font-size:13px;font-weight:600;margin-top:4px;"
+            )
+            layout.addWidget(attachment_title)
             att = letter_store.read_attachment(letter_id)
             if att:
                 # 附件大小校验：超限直接拒绝渲染，避免大图卡顿/OOM
@@ -135,7 +146,7 @@ class ReadLetterWindow(QMainWindow):
 
         # 按钮行：写回信 + 收好这封信
         btn_row = QHBoxLayout()
-        reply_btn = QPushButton("✍ 写回信", self)
+        reply_btn = QPushButton("写回信", self)
         reply_btn.setStyleSheet(
             "QPushButton{background:#ffffff;color:#d84f68;border:1px solid #e8a0ad;"
             "border-radius:6px;padding:10px 16px;font-size:14px;}"
