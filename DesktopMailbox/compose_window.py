@@ -128,6 +128,10 @@ class ComposeWindow(QMainWindow):
         )
         self._body.textChanged.connect(self._update_send_state)
         root.addWidget(self._body, 1)
+        self._body_count = QLabel("当前 0 字", self)
+        self._body_count.setStyleSheet("color:#9aa5b1;font-size:12px;")
+        self._body_count.setAlignment(Qt.AlignRight)
+        root.addWidget(self._body_count)
 
         # 附件
         attachment_label = QLabel("图片附件", self)
@@ -186,7 +190,9 @@ class ComposeWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+Return"), self, activated=self._on_send)
 
     def _update_send_state(self) -> None:
-        self._send_btn.setEnabled(bool(self._body.toPlainText().strip()))
+        text = self._body.toPlainText()
+        self._send_btn.setEnabled(bool(text.strip()))
+        self._body_count.setText(f"当前 {len(text)} 字")
 
     # ---------- 附件 ----------
 
