@@ -137,6 +137,7 @@ class GalleryWindow(QMainWindow):
                 "QLabel{background:#10151a;color:#d9e0e6;"
                 "font-size:16px;line-height:1.5;}"
             )
+            self._status.setText("当前相册为空")
 
         # 悬浮层自动隐藏
         self._hide_timer = QTimer(self)
@@ -252,6 +253,7 @@ class GalleryWindow(QMainWindow):
         self._fade_switch(pm)
         self._status.setText(
             f"  {self._index + 1} / {len(self._images)}  ·  {src.name}"
+            f"  ·  缩放 {round(self._zoom * 100)}%"
         )
 
     def _fade_switch(self, pixmap: QPixmap) -> None:
