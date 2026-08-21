@@ -122,6 +122,16 @@ class StatsWindow(QMainWindow):
             grid.addWidget(card, index // 2, index % 2)
         layout.addLayout(grid, 1)
 
+        refresh_btn = QPushButton("刷新数据", self)
+        refresh_btn.setStyleSheet(
+            "QPushButton{background:#ffffff;color:#d84f68;"
+            "border:1px solid #e8a0ad;border-radius:6px;"
+            "padding:9px 16px;font-size:14px;}"
+            "QPushButton:hover{background:#fff0f3;}"
+        )
+        refresh_btn.setToolTip("重新计算信件、照片和纪念日统计")
+        refresh_btn.clicked.connect(self.refresh)
+
         close_btn = QPushButton("关闭", self)
         close_btn.setStyleSheet(
             "QPushButton{background:#263238;color:#fff;border:none;"
@@ -131,6 +141,7 @@ class StatsWindow(QMainWindow):
         close_btn.clicked.connect(self.close)
         button_row = QHBoxLayout()
         button_row.addStretch(1)
+        button_row.addWidget(refresh_btn)
         button_row.addWidget(close_btn)
         layout.addLayout(button_row)
 
