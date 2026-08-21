@@ -316,6 +316,11 @@ class UnifiedTray(QObject):
         self._album_menu.addSeparator()
         albums = pf_config.list_albums()
         cur_dir = pf_config.load().get("image_dir", "")
+        if not albums:
+            empty = QAction("暂无其他相册", self._album_menu)
+            empty.setEnabled(False)
+            self._album_menu.addAction(empty)
+            return
         for a in albums:
             name = a.get("name", a.get("path", ""))
             path = a.get("path", "")
