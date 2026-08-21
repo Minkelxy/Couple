@@ -1,6 +1,6 @@
 """旅行地图主窗口。
 
-继承 QMainWindow，标题"旅行地图 🗺"，初始尺寸 1000x750。
+继承 QMainWindow，标题"旅行地图"，初始尺寸 1000x750。
 中央 QLabel 显示地图渲染结果，底部统计 + 操作按钮 + 城市列表。
 """
 from __future__ import annotations
@@ -111,7 +111,7 @@ class _EditCityDialog(QDialog):
     def __init__(self, parent=None, city: dict | None = None,
                  default_type: str = "visited") -> None:
         super().__init__(parent)
-        self.setWindowTitle("城市详情 ✏")
+        self.setWindowTitle("城市详情")
         self.resize(420, 500)
         self.setMinimumSize(380, 460)
         self._city = city or {}
@@ -124,12 +124,12 @@ class _EditCityDialog(QDialog):
         layout.setSpacing(10)
 
         name = self._city.get("name") or self._city.get("city_name", "")
-        title = QLabel(f"✏ {name}" if name else "➕ 添加城市", self)
+        title = QLabel(name if name else "添加城市", self)
         title.setStyleSheet("font-size:20px; font-weight:700; color:#263238;")
         layout.addWidget(title)
 
         # 日期
-        layout.addWidget(QLabel("📅 日期：", self))
+        layout.addWidget(QLabel("日期：", self))
         self.date_edit = QDateEdit(self)
         self.date_edit.setDisplayFormat("yyyy-MM-dd")
         self.date_edit.setCalendarPopup(True)
@@ -149,7 +149,7 @@ class _EditCityDialog(QDialog):
         layout.addWidget(self.date_edit)
 
         # 故事
-        layout.addWidget(QLabel("💭 故事：", self))
+        layout.addWidget(QLabel("故事：", self))
         self.story_edit = QTextEdit(self)
         self.story_edit.setPlainText(self._city.get("story", ""))
         self.story_edit.setStyleSheet(
@@ -161,8 +161,8 @@ class _EditCityDialog(QDialog):
         # 类型
         type_row = QHBoxLayout()
         type_row.addWidget(QLabel("类型：", self))
-        self.rb_visited = QRadioButton("🌸 已去过", self)
-        self.rb_wish = QRadioButton("✨ 愿望", self)
+        self.rb_visited = QRadioButton("已去过", self)
+        self.rb_wish = QRadioButton("愿望", self)
         self.type_group = QButtonGroup(self)
         self.type_group.addButton(self.rb_visited)
         self.type_group.addButton(self.rb_wish)
@@ -178,7 +178,7 @@ class _EditCityDialog(QDialog):
 
         # 照片
         photo_row = QHBoxLayout()
-        self.photo_btn = QPushButton("📷 选择照片", self)
+        self.photo_btn = QPushButton("选择照片", self)
         self.photo_btn.setStyleSheet(
             "QPushButton{background:#ffffff;color:#52616d;border:1px solid #d7dee8;"
             "border-radius:6px;padding:8px 12px;}"
@@ -246,7 +246,7 @@ class _DetailDialog(QDialog):
 
     def __init__(self, parent, city: dict, on_edit=None, on_delete=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("城市详情 📍")
+        self.setWindowTitle("城市详情")
         self.resize(400, 520)
         self.setMinimumSize(360, 460)
         self._on_edit = on_edit
@@ -258,19 +258,19 @@ class _DetailDialog(QDialog):
         layout.setContentsMargins(20, 18, 20, 18)
         layout.setSpacing(10)
 
-        title = QLabel(f"📍 {city.get('city_name', '')}", self)
+        title = QLabel(city.get("city_name", ""), self)
         title.setStyleSheet("font-size:22px; font-weight:700; color:#263238;")
         layout.addWidget(title)
 
         ctype = city.get("type", "visited")
-        type_text = "✨ 愿望清单" if ctype == "wish" else "🌸 已去过"
+        type_text = "愿望清单" if ctype == "wish" else "已去过"
         type_label = QLabel(type_text, self)
         type_label.setStyleSheet("color:#7b8794;font-size:13px;")
         layout.addWidget(type_label)
 
         date_str = city.get("date", "")
         if date_str:
-            layout.addWidget(QLabel(f"📅 {date_str}", self))
+            layout.addWidget(QLabel(f"日期：{date_str}", self))
 
         # 照片
         img_path = _resolve_travel_photo(city.get("image_path", ""))
@@ -284,7 +284,7 @@ class _DetailDialog(QDialog):
         # 故事
         story = city.get("story", "")
         if story:
-            story_label = QLabel("💭 我们的故事：", self)
+            story_label = QLabel("我们的故事：", self)
             story_label.setStyleSheet("color:#7b8794;font-size:13px;")
             layout.addWidget(story_label)
             story_text = QLabel(story, self)
@@ -343,7 +343,7 @@ class TravelMapWindow(QMainWindow):
     def __init__(self, hub=None) -> None:
         super().__init__()
         self._hub = hub
-        self.setWindowTitle("旅行地图 🗺")
+        self.setWindowTitle("旅行地图")
         self.resize(1080, 800)
         self.setMinimumSize(980, 700)
         self._default_type = "visited"
@@ -386,21 +386,30 @@ class TravelMapWindow(QMainWindow):
 
         # 统计 + 操作按钮
         top_bar = QHBoxLayout()
-        self.stats_label = QLabel("已解锁 0 个城市 🏆", self)
+        self.stats_label = QLabel("已去过 0 个城市", self)
         self.stats_label.setStyleSheet("font-size:15px; font-weight:700; color:#52616d;")
         top_bar.addWidget(self.stats_label)
         top_bar.addStretch(1)
 
-        self.add_btn = QPushButton("➕ 添加城市", self)
-        self.play_btn = QPushButton("▶ 播放路线", self)
-        self.switch_btn = QPushButton("🔄 切换愿望/已去", self)
-        btn_style = (
+        self.add_btn = QPushButton("添加城市", self)
+        self.play_btn = QPushButton("播放路线", self)
+        self.switch_btn = QPushButton("新增默认：已去过", self)
+        primary_style = (
             f"QPushButton{{background:{PINK};color:#fff;border:none;"
             f"border-radius:6px;padding:9px 14px;font-size:13px;font-weight:600;}}"
             f"QPushButton:hover{{background:#d94f68;}}"
         )
-        for btn in (self.add_btn, self.play_btn, self.switch_btn):
-            btn.setStyleSheet(btn_style)
+        secondary_style = (
+            "QPushButton{background:#ffffff;color:#52616d;border:1px solid #d7dee8;"
+            "border-radius:6px;padding:9px 14px;font-size:13px;}"
+            "QPushButton:hover{background:#fff0f3;border-color:#e8a0ad;}"
+        )
+        self.add_btn.setStyleSheet(primary_style)
+        for btn in (self.play_btn, self.switch_btn):
+            btn.setStyleSheet(secondary_style)
+        self.add_btn.setToolTip("从城市列表中选择并添加一座城市")
+        self.play_btn.setToolTip("按日期顺序播放已记录的旅行路线")
+        self.switch_btn.setToolTip("切换下一次新增城市的默认类型")
         self.add_btn.clicked.connect(self._on_add_city)
         self.play_btn.clicked.connect(self._on_play_route)
         self.switch_btn.clicked.connect(self._on_switch_type)
@@ -411,12 +420,15 @@ class TravelMapWindow(QMainWindow):
 
         # 城市列表（点击查看详情）
         self.city_list = QListWidget(self)
-        self.city_list.setMaximumHeight(140)
+        self.city_list.setMaximumHeight(160)
+        self.city_list.setAlternatingRowColors(True)
+        self.city_list.setSpacing(2)
         self.city_list.setStyleSheet(
             "QListWidget{border:1px solid #dfe5ec;border-radius:8px;"
-            "font-size:13px;background:#ffffff;}"
-            "QListWidget::item{padding:7px;}"
-            "QListWidget::item:selected{background:#ffe8ed;color:#d84f68;}"
+            "font-size:13px;background:#ffffff;padding:4px;}"
+            "QListWidget::item{padding:7px;border-radius:5px;}"
+            "QListWidget::item:hover{background:#fff7f8;}"
+            "QListWidget::item:selected{background:#ffe8ed;color:#263238;}"
         )
         self.city_list.itemClicked.connect(self._on_city_clicked)
         layout.addWidget(self.city_list)
@@ -430,7 +442,7 @@ class TravelMapWindow(QMainWindow):
     def _refresh(self) -> None:
         cities = store.list_all()
         n = store.count_visited()
-        self.stats_label.setText(f"已解锁 {n} 个城市 🏆")
+        self.stats_label.setText(f"已去过 {n} 个城市")
 
         route = self._route_cities[: self._route_index] if self._route_cities else None
 
@@ -444,10 +456,10 @@ class TravelMapWindow(QMainWindow):
 
         self.city_list.clear()
         for c in cities:
-            icon = "🌸" if c.get("type") == "visited" else "✨"
+            icon = "[已去过]" if c.get("type") == "visited" else "[愿望]"
             date_str = c.get("date", "")
             suffix = f"  ({date_str})" if date_str else ""
-            item = QListWidgetItem(f"{icon} {c.get('city_name', '')}{suffix}")
+            item = QListWidgetItem(f"{icon}  {c.get('city_name', '')}{suffix}")
             item.setData(Qt.UserRole, c)
             self.city_list.addItem(item)
 
@@ -588,7 +600,8 @@ class TravelMapWindow(QMainWindow):
 
     def _on_switch_type(self) -> None:
         self._default_type = "wish" if self._default_type == "visited" else "visited"
-        label = "愿望 ✨" if self._default_type == "wish" else "已去过 🌸"
+        label = "愿望" if self._default_type == "wish" else "已去过"
+        self.switch_btn.setText(f"新增默认：{label}")
         QMessageBox.information(self, "已切换", f"新增城市默认类型：{label}")
 
     def closeEvent(self, event) -> None:
