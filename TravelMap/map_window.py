@@ -429,6 +429,7 @@ class TravelMapWindow(QMainWindow):
             "QListWidget::item{padding:7px;border-radius:5px;}"
             "QListWidget::item:hover{background:#fff7f8;}"
             "QListWidget::item:selected{background:#ffe8ed;color:#263238;}"
+            "QListWidget::item:disabled{color:#9aa5b1;}"
         )
         self.city_list.itemClicked.connect(self._on_city_clicked)
         layout.addWidget(self.city_list)
@@ -462,6 +463,11 @@ class TravelMapWindow(QMainWindow):
             item = QListWidgetItem(f"{icon}  {c.get('city_name', '')}{suffix}")
             item.setData(Qt.UserRole, c)
             self.city_list.addItem(item)
+        if not cities:
+            empty = QListWidgetItem("暂无旅行记录，点击“添加城市”开始记录")
+            empty.setFlags(Qt.NoItemFlags)
+            empty.setTextAlignment(Qt.AlignCenter)
+            self.city_list.addItem(empty)
 
     def _on_map_city_clicked(self, name: str) -> None:
         """真实地图上点击城市标记：找到对应记录并打开详情。"""
