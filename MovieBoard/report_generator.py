@@ -164,7 +164,7 @@ def generate_year_report(year: int) -> str:
         "space_before": 8, "wrap": False,
     })
     blocks.append({
-        "text": t("🎬 本年观影总结", "Movie Summary"),
+        "text": t("本年观影总结", "Movie Summary"),
         "font": f_head, "color": _PINK, "align": "left",
         "space_before": 36, "wrap": False,
     })
@@ -187,7 +187,7 @@ def generate_year_report(year: int) -> str:
             "space_before": 8, "wrap": True,
         })
     blocks.append({
-        "text": t("🏷 类型分布", "Genre Distribution"),
+        "text": t("类型分布", "Genre Distribution"),
         "font": f_head, "color": _PINK, "align": "left",
         "space_before": 30, "wrap": False,
     })
@@ -205,7 +205,7 @@ def generate_year_report(year: int) -> str:
             "space_before": 8, "wrap": True,
         })
     blocks.append({
-        "text": t("💥 评分差异之最", "Biggest Rating Gap"),
+        "text": t("评分差异之最", "Biggest Rating Gap"),
         "font": f_head, "color": _PINK, "align": "left",
         "space_before": 30, "wrap": False,
     })
