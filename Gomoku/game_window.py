@@ -204,6 +204,7 @@ class GameWindow(QMainWindow):
 
         # 悔棋并发守卫
         self._i_requested_undo = False
+        self._undo_request_nonce = 0
         self._local_undo_applied = False
 
         # 重开并发守卫
@@ -658,6 +659,8 @@ class GameWindow(QMainWindow):
             return
         if self._i_requested_undo:
             return
+        self._undo_request_nonce += 1
+        request_nonce = self._undo_request_nonce
         self._i_requested_undo = True
         self._undo_btn.setEnabled(False)
         self._undo_btn.setText("等待悔棋回应…")
@@ -668,6 +671,16 @@ class GameWindow(QMainWindow):
         }, silent=True)
         self._board.set_locked(True)
         self._status("已发送悔棋请求…")
+        QTimer.singleShot(30_000, lambda n=request_nonce: self._timeout_undo(n))
+
+    def _timeout_undo(self, nonce: int) -> None:
+        if nonce != self._undo_request_nonce or not self._i_requested_undo:
+            return
+        self._i_requested_undo = False
+        self._undo_btn.setEnabled(True)
+        self._undo_btn.setText("悔棋")
+        self._sync_lock()
+        self._status("悔棋请求超时，请稍后重试")
 
     def _on_restart(self) -> None:
         self._board.clear_board()
