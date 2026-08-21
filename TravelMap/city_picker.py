@@ -153,6 +153,16 @@ def pick_city_dialog(parent=None) -> dict | None:
     cancel_btn.clicked.connect(dlg.reject)
     list_widget.itemDoubleClicked.connect(lambda _it: _accept())
 
+    def _update_ok_state() -> None:
+        current = list_widget.currentItem()
+        ok_btn.setEnabled(
+            current is not None and isinstance(current.data(Qt.UserRole), dict)
+        )
+
+    search.textChanged.connect(lambda _text: _update_ok_state())
+    list_widget.currentItemChanged.connect(lambda _current, _previous: _update_ok_state())
+    _update_ok_state()
+
     if dlg.exec() == QDialog.Accepted:
         return result["value"]
     return None
