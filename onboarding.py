@@ -150,11 +150,13 @@ class OnboardingWindow(QMainWindow):
             return
         
         # 保存配置
-        mb_config.update(my_name=my_name, their_name=their_name)
+        mb_config.update(
+            my_name=my_name,
+            their_name=their_name,
+            sync_enabled=self._sync_check.isChecked(),
+            peer_host=peer_host if self._sync_check.isChecked() else "",
+        )
         pf_config.update(image_dir=image_dir)
-        
-        if self._sync_check.isChecked():
-            mb_config.update(sync_enabled=True, peer_host=peer_host)
         
         # 标记引导完成
         app_paths.update_suite(onboarded=True)
