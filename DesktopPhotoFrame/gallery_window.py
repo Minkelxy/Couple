@@ -645,7 +645,8 @@ class GalleryGridWindow(QMainWindow):
         self._stop_thumb_worker()
         self._grid.clear()
         path = self._album_combo.currentData() or ""
-        images = ip.list_images(path)
+        all_images = ip.list_images(path)
+        images = list(all_images)
         if self._search_text:
             images = [img for img in images if self._search_text in img.name.casefold()]
         if self._favorites_only:
@@ -658,16 +659,33 @@ class GalleryGridWindow(QMainWindow):
         elif self._sort_mode == "random":
             random.shuffle(images)
         self._grid_images = images
+        filters = []
+        if self._search_text:
+            filters.append(f"搜索“{self._search_text}”")
+        if self._favorites_only:
+            filters.append("仅收藏")
+        filter_text = " · ".join(filters)
         self._grid_status.setText(f"{len(images)} 张照片" if images else "当前没有符合条件的照片")
+        if filters:
+            self._grid_status.setText(
+                f"{len(images)} / {len(all_images)} 张照片 · {filter_text}"
+            )
+        elif images:
+            self._grid_status.setText(f"共 {len(images)} 张照片")
         if not images:
             display_path = str(path)
             if len(display_path) > 72:
                 display_path = "…" + display_path[-69:]
+            empty_hint = (
+                "请清除搜索或收藏筛选后重试"
+                if filters else "请将图片放入该目录，或选择其他相册"
+            )
             item = QListWidgetItem(
                 "此相册暂无照片\n"
                 f"{display_path}\n\n"
-                "请将图片放入该目录，或选择其他相册"
+                f"{empty_hint}"
             )
+            item.setToolTip(empty_hint)
             item.setFlags(Qt.NoItemFlags)
             item.setTextAlignment(Qt.AlignCenter)
             item.setForeground(QColor("#7b8794"))
