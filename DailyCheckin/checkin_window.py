@@ -351,6 +351,7 @@ class CheckinWindow(QMainWindow):
         partner_col = QVBoxLayout()
         partner_col.setSpacing(8)
         partner_title = QLabel("对方近况", self)
+        partner_title.setText("对方近况 · 最近 7 天")
         partner_title.setStyleSheet(
             "font-size:15px; font-weight:700; color:#52616d;"
         )
@@ -363,6 +364,7 @@ class CheckinWindow(QMainWindow):
             "QListWidget::item{padding:8px 6px; border-bottom:1px solid #edf1f5;}"
             "QListWidget::item:hover{background:#f7f9fb;}"
             "QListWidget::item:selected{background:#eef5f7;color:#263238;}"
+            "QListWidget::item:disabled{color:#9aa5b1;}"
         )
         self._partner_list.setAlternatingRowColors(True)
         self._partner_list.setSpacing(2)
