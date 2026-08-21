@@ -11,7 +11,7 @@ from datetime import date
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import (
     QButtonGroup, QDateEdit, QDialog, QFileDialog, QHBoxLayout, QLabel,
     QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton,
@@ -462,6 +462,16 @@ class TravelMapWindow(QMainWindow):
             date_str = c.get("date", "")
             suffix = f"  ({date_str})" if date_str else ""
             item = QListWidgetItem(f"{icon}  {c.get('city_name', '')}{suffix}")
+            if c.get("source") == "partner":
+                category = "对方共享"
+                item.setForeground(QColor("#4d7ea8"))
+            elif c.get("type") == "wish":
+                category = "愿望城市"
+                item.setForeground(QColor("#a56d2f"))
+            else:
+                category = "已去过"
+                item.setForeground(QColor("#d84f68"))
+            item.setToolTip(f"{category}\n点击查看城市详情")
             item.setData(Qt.UserRole, c)
             self.city_list.addItem(item)
         if not cities:
