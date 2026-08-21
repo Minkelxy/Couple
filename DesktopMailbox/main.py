@@ -117,7 +117,7 @@ def main() -> int:
         )
         title = first_meta["title"] if first_meta else "新信件"
         author = first_meta["author"] if first_meta else "?"
-        tray.show_toast("💌 收到一封信", f"来自 {author}：{title}")
+        tray.show_toast("收到一封信", f"来自 {author}：{title}")
         update_unread()
         # 自动打开第一封（仪式感）
         open_read_letter(ids[0])
@@ -155,7 +155,7 @@ def main() -> int:
     # 纪念日投递提示
     if anniv_created:
         tray.show_toast(
-            "纪念日快乐 🎉",
+            "纪念日快乐",
             f"已自动投递 {len(anniv_created)} 封纪念日信件",
         )
 

@@ -191,7 +191,7 @@ def main() -> int:
         )
         title = first_meta["title"] if first_meta else "新信件"
         author = first_meta["author"] if first_meta else "?"
-        tray.show_toast("💌 收到一封信", f"来自 {author}：{title}")
+        tray.show_toast("收到一封信", f"来自 {author}：{title}")
         update_unread()
         open_read_letter(ids[0])
 
@@ -428,8 +428,8 @@ def main() -> int:
                 "联机：向对方发邀请，对方接受后双方自动对齐棋盘\n"
                 "本地：仅在本电脑体验（可之后再点「邀请对方」按钮联机）"
             )
-            invite_btn = box.addButton("📨 邀请对方联机", QMessageBox.AcceptRole)
-            local_btn = box.addButton("🎯 仅本地体验", QMessageBox.RejectRole)
+            invite_btn = box.addButton("邀请对方联机", QMessageBox.AcceptRole)
+            local_btn = box.addButton("仅本地体验", QMessageBox.RejectRole)
             box.exec()
             if box.clickedButton() is invite_btn:
                 invite = True
@@ -456,7 +456,7 @@ def main() -> int:
             gomoku_win.raise_()
             gomoku_win.activateWindow()
             # 从托盘再打开时，如果上次只是本地体验、用户这次想联机，
-            # 已经可以直接点窗口左上角「📨 邀请对方」按钮；这里保持行为一致。
+            # 已经可以直接点窗口左上角「邀请对方」按钮；这里保持行为一致。
 
     # ===== 连接相框信号 =====
     tray.pf_next.connect(pf_window.show_next)
@@ -528,7 +528,7 @@ def main() -> int:
 
     if anniv_created:
         tray.show_toast(
-            "纪念日快乐 🎉",
+            "纪念日快乐",
             f"已自动投递 {len(anniv_created)} 封纪念日信件",
         )
 
@@ -542,8 +542,8 @@ def main() -> int:
             # 用 QTimer.singleShot 让主线程有机会先弹主窗口，再气泡不被挡住
             def _tip():
                 tray.show_toast(
-                    "🔐 建议完成配对",
-                    "打开「设置 → 🔐 联机身份」完成一次性配对，之后就不用再填识别码啦，"
+                    "建议完成配对",
+                    "打开「设置 → 联机身份」完成一次性配对，之后就不用再填识别码啦，"
                     "双方消息还会自动签名校验，外人冒充不了。",
                 )
             QTimer.singleShot(1500, _tip)
