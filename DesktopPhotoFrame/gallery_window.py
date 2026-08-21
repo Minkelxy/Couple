@@ -748,14 +748,18 @@ class GalleryGridWindow(QMainWindow):
         if item is not None:
             path_str = item.data(Qt.UserRole)
             if path_str:
+                is_favorite = config.is_favorite(path_str)
                 act_favorite = menu.addAction(
-                    "Remove favorite" if config.is_favorite(path_str) else "Add favorite"
+                    "取消收藏" if is_favorite else "收藏照片"
                 )
         act_share = menu.addAction("共享给对方")
         chosen = menu.exec(self._grid.mapToGlobal(pos))
         if chosen is act_favorite and item is not None:
-            config.toggle_favorite(item.data(Qt.UserRole))
+            is_favorite = config.toggle_favorite(item.data(Qt.UserRole))
             self._refresh_grid()
+            self.statusBar().showMessage(
+                "已收藏照片" if is_favorite else "已取消收藏", 3000
+            )
         if chosen is act_share:
             self._share_current_album()
 
