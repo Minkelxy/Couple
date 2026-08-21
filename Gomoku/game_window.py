@@ -565,6 +565,8 @@ class GameWindow(QMainWindow):
             self._local_undo_applied = False
             self._game_over = False
             self._i_requested_undo = False
+            self._undo_btn.setEnabled(True)
+            self._undo_btn.setText("悔棋")
             # 我是悔棋发起方 → 我的上一步被撤 → 当前轮回到对方先下
             self._board.set_locked(True)
             self._status("对方同意悔棋，等待对方落子")
@@ -573,6 +575,8 @@ class GameWindow(QMainWindow):
             log_info("gomoku RECV undo_reject session=%s", self._session_id)
             self._local_undo_applied = False
             self._i_requested_undo = False
+            self._undo_btn.setEnabled(True)
+            self._undo_btn.setText("悔棋")
             self._sync_lock()
             if self._board.current_color() == 1:
                 self._status("对方拒绝悔棋，轮到你落子")
@@ -655,6 +659,8 @@ class GameWindow(QMainWindow):
         if self._i_requested_undo:
             return
         self._i_requested_undo = True
+        self._undo_btn.setEnabled(False)
+        self._undo_btn.setText("等待悔棋回应…")
         log_info("gomoku SENT undo_request session=%s", self._session_id)
         self._hub.send_event("gomoku_ctrl", {
             "kind": "undo_request",
