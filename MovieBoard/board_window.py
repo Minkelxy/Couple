@@ -432,6 +432,7 @@ class BoardWindow(QMainWindow):
         # 搜索中：按钮变 loading 状态
         self._add_btn.setEnabled(False)
         self._add_btn.setText("搜索中...")
+        self.statusBar().showMessage(f"正在搜索：{title}")
         worker = _SearchWorker(title)
         worker.found.connect(self._on_search_found)
         worker.failed.connect(lambda t=title: self._on_search_failed(t))
@@ -446,6 +447,7 @@ class BoardWindow(QMainWindow):
         # 恢复添加按钮
         self._add_btn.setEnabled(True)
         self._add_btn.setText("添加影视")
+        self.statusBar().showMessage("可以继续添加影视", 3000)
 
     def _on_search_found(self, info: dict) -> None:
         store.add(
@@ -455,11 +457,13 @@ class BoardWindow(QMainWindow):
             intro=info.get("intro", ""),
         )
         self.refresh()
+        self.statusBar().showMessage(f"已添加：{info.get('title', '')}", 4000)
         QMessageBox.information(
             self, "已添加", f"已加入想看：{info.get('title', '')}"
         )
 
     def _on_search_failed(self, title: str) -> None:
+        self.statusBar().showMessage(f"未找到：{title}，可手动添加", 5000)
         btn = QMessageBox.question(
             self, "未找到",
             f"未在豆瓣找到「{title}」，是否手动添加？",
