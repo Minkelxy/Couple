@@ -317,7 +317,13 @@ class FrameWindow(QWidget):
         self._apply_theme()
         self._apply_size()
         if not self._images:
-            self._show_placeholder("把照片放进目录：\n" + self._cfg["image_dir"])
+            if self._favorites_only:
+                message = "暂无收藏照片\n请先退出筛选并收藏照片"
+                self.status_message.emit("仅看收藏：暂无照片")
+            else:
+                message = "把照片放进目录：\n" + self._cfg["image_dir"]
+                self.status_message.emit("相册暂无照片")
+            self._show_placeholder(message)
             self._timer.stop()
             return
         self._index = -1
