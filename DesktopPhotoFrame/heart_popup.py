@@ -18,6 +18,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import (
     QColor,
+    QFontMetrics,
     QPainter,
     QPainterPath,
     QPen,
@@ -110,13 +111,14 @@ class HeartPopup(QWidget):
         caption_font.setBold(True)
         p.setFont(caption_font)
         p.setPen(QColor(255, 240, 245, 230))
+        caption = "想你了" if QFontMetrics(caption_font).inFontUcs4(ord("想")) else "Miss you"
         caption_rect = QRectF(
             cx - size,
             bottom_y + 22,
             size * 2,
             34,
         )
-        p.drawText(caption_rect, Qt.AlignCenter, "想你了")
+        p.drawText(caption_rect, Qt.AlignCenter, caption)
 
     # ---------- 显示 ----------
 
