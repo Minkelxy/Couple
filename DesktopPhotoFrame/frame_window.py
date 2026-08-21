@@ -261,7 +261,7 @@ class FrameWindow(QWidget):
         """今天是否纪念日，是则返回主题色 RGB。"""
         today = datetime.now().strftime("%m-%d")
         if today in self._cfg.get("anniversaries", []):
-            return _hex_to_rgb(self._cfg.get("theme_color", "#e65a7a"))
+            return _hex_to_rgb(self._cfg.get("theme_color", "#e85d75"))
         return None
 
     def _apply_size(self) -> None:

@@ -88,7 +88,7 @@ DEFAULTS = {
     # 纪念日列表（MM-DD），当天自动切换主题色
     "anniversaries": ["02-14", "12-25"],
     # 纪念日主题色（#RRGGBB）
-    "theme_color": "#e65a7a",
+    "theme_color": "#e85d75",
     # Ken Burns 缓慢平移动画
     "ken_burns": True,
     # 模糊背景填充（contain 模式下，竖图横屏无留白，Instagram 风格）

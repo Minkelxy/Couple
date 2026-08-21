@@ -666,7 +666,7 @@ class SettingsWindow(QMainWindow):
         self._pf_kenburns.setChecked(bool(pf.get("ken_burns", True)))
         self._pf_blur_bg.setChecked(bool(pf.get("blur_background", False)))
         self._pf_wheel.setChecked(bool(pf.get("wheel_zoom_enabled", True)))
-        self._pf_color_edit.setText(str(pf.get("theme_color", "#e65a7a")))
+        self._pf_color_edit.setText(str(pf.get("theme_color", "#e85d75")))
 
         # 当前默认相册
         self._pf_current_album.setText(str(pf.get("image_dir", "")))
@@ -856,7 +856,7 @@ class SettingsWindow(QMainWindow):
             ken_burns=self._pf_kenburns.isChecked(),
             blur_background=self._pf_blur_bg.isChecked(),
             wheel_zoom_enabled=self._pf_wheel.isChecked(),
-            theme_color=self._pf_color_edit.text().strip() or "#e65a7a",
+            theme_color=self._pf_color_edit.text().strip() or "#e85d75",
             anniversaries=[
                 self._pf_anniv_list.item(i).text()
                 for i in range(self._pf_anniv_list.count())

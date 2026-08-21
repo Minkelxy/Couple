@@ -96,7 +96,7 @@ class CalendarWidget(QWidget):
             bg = "#fff"
         return (
             f"QPushButton{{border:{border}; border-radius:8px;"
-            f"background:{bg}; font-size:16px; color:#333;}}"
+            f"background:{bg}; font-size:16px; color:#263238;}}"
             f"QPushButton:hover{{background:#fff0f3;}}"
         )
 
