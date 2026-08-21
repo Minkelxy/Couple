@@ -78,9 +78,17 @@ class OnboardingWindow(QMainWindow):
         self._peer_host = QLineEdit(self)
         self._peer_host.setPlaceholderText("对方电脑 IP（如 192.168.1.20）")
         self._peer_host.setEnabled(False)
+        self._peer_host.textChanged.connect(
+            lambda _text: self._on_sync_toggled(self._sync_check.isChecked())
+        )
         peer_row.addWidget(QLabel("对方IP:", self))
         peer_row.addWidget(self._peer_host, 1)
         root.addLayout(peer_row)
+        self._sync_hint = QLabel(self)
+        self._sync_hint.setWordWrap(True)
+        self._sync_hint.setStyleSheet("color:#7b8794;font-size:12px;")
+        root.addWidget(self._sync_hint)
+        self._on_sync_toggled(False)
 
         root.addStretch(1)
 
@@ -114,6 +122,15 @@ class OnboardingWindow(QMainWindow):
 
     def _on_sync_toggled(self, on: bool) -> None:
         self._peer_host.setEnabled(on)
+        if not on:
+            self._sync_hint.setText("可以稍后在设置中配置局域网同步。")
+            self._sync_hint.setStyleSheet("color:#7b8794;font-size:12px;")
+        elif self._peer_host.text().strip():
+            self._sync_hint.setText("已启用：保存后会尝试连接对方电脑。")
+            self._sync_hint.setStyleSheet("color:#2f7d68;font-size:12px;")
+        else:
+            self._sync_hint.setText("请填写对方电脑的局域网 IP，保存后才会开始连接。")
+            self._sync_hint.setStyleSheet("color:#a56d2f;font-size:12px;")
 
     def _on_skip(self) -> None:
         # 写入 suite.json 标记已完成引导
