@@ -592,6 +592,7 @@ class TravelMapWindow(QMainWindow):
     def _on_play_route(self) -> None:
         if self._route_timer.isActive():
             self._reset_route()
+            self.statusBar().showMessage("路线播放已停止", 3000)
             self._refresh()
             return
         self._route_cities = store.sorted_by_date()
@@ -602,6 +603,7 @@ class TravelMapWindow(QMainWindow):
         self._route_timer.start()
         self.play_btn.setText("停止播放")
         self.play_btn.setToolTip("停止路线动画并恢复地图全览")
+        self.statusBar().showMessage(f"正在播放 {len(self._route_cities)} 个城市", 3000)
         self._refresh()
 
     def _on_route_tick(self) -> None:
@@ -612,6 +614,7 @@ class TravelMapWindow(QMainWindow):
             self._route_timer.stop()
             self.play_btn.setText("播放路线")
             self.play_btn.setToolTip("按日期顺序播放已记录的旅行路线")
+            self.statusBar().showMessage("路线播放完成", 3000)
 
     # ---------- 切换默认类型 ----------
 
