@@ -321,6 +321,8 @@ class GameWindow(QMainWindow):
                 return
             invite_id = _new_id("inv-")
             self._pending_invite_id = invite_id
+        self._invite_btn.setEnabled(False)
+        self._invite_btn.setText("等待接受…")
         # 我是邀请发起方：对方先下 → 我开局白 → 本地锁
         self._i_start_first = False
         self._session_id = None
@@ -341,6 +343,8 @@ class GameWindow(QMainWindow):
             if self._pending_invite_id != invite_id:
                 return
             self._pending_invite_id = None
+        self._invite_btn.setEnabled(True)
+        self._invite_btn.setText("邀请对方")
         log_info("gomoku invite %s timeout 30s", invite_id)
         self._status("邀请超时（对方未回应）")
         self._board.set_locked(False)
@@ -499,6 +503,8 @@ class GameWindow(QMainWindow):
                         meta.get("invite_id") != self._pending_invite_id:
                     return
                 self._pending_invite_id = None
+            self._invite_btn.setEnabled(True)
+            self._invite_btn.setText("邀请对方")
             self._session_id = str(meta.get("session_id") or _new_id("ses-"))
             log_info("gomoku RECV invite_accept %s session=%s",
                      meta.get("invite_id"), self._session_id)
@@ -517,6 +523,8 @@ class GameWindow(QMainWindow):
                         meta.get("invite_id") != self._pending_invite_id:
                     return
                 self._pending_invite_id = None
+            self._invite_btn.setEnabled(True)
+            self._invite_btn.setText("邀请对方")
             log_info("gomoku RECV invite_reject %s reason=%s",
                      meta.get("invite_id"), meta.get("reason", ""))
             reason = str(meta.get("reason", "") or "")
