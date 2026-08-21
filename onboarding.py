@@ -5,7 +5,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFileDialog, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
-    QPushButton, QVBoxLayout, QWidget, QCheckBox, QSpinBox,
+    QPushButton, QVBoxLayout, QWidget, QCheckBox, QSpinBox, QGroupBox,
 )
 
 import app_paths
@@ -20,8 +20,8 @@ class OnboardingWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("欢迎使用桌面相册")
-        self.resize(520, 500)
-        self.setMinimumSize(480, 460)
+        self.resize(560, 600)
+        self.setMinimumSize(500, 560)
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -41,9 +41,9 @@ class OnboardingWindow(QMainWindow):
         root.addWidget(hint)
 
         # 步骤1：昵称
-        step_one = QLabel("01  昵称", self)
-        step_one.setStyleSheet("font-size:15px; font-weight:700; color:#263238;")
-        root.addWidget(step_one)
+        identity_group = QGroupBox("01  你们是谁", self)
+        identity_layout = QVBoxLayout(identity_group)
+        identity_layout.setContentsMargins(12, 14, 12, 12)
         name_row = QHBoxLayout()
         self._my_name = QLineEdit(self)
         self._my_name.setPlaceholderText("我的昵称")
@@ -51,12 +51,13 @@ class OnboardingWindow(QMainWindow):
         self._their_name.setPlaceholderText("对方昵称")
         name_row.addWidget(self._my_name)
         name_row.addWidget(self._their_name)
-        root.addLayout(name_row)
+        identity_layout.addLayout(name_row)
+        root.addWidget(identity_group)
 
         # 步骤2：图片目录
-        step_two = QLabel("02  照片目录", self)
-        step_two.setStyleSheet("font-size:15px; font-weight:700; color:#263238;")
-        root.addWidget(step_two)
+        photo_group = QGroupBox("02  照片目录", self)
+        photo_layout = QVBoxLayout(photo_group)
+        photo_layout.setContentsMargins(12, 14, 12, 12)
         dir_row = QHBoxLayout()
         self._image_dir = QLineEdit(str(app_paths.IMAGES_DIR), self)
         browse_btn = QPushButton("浏览…", self)
@@ -64,15 +65,20 @@ class OnboardingWindow(QMainWindow):
         browse_btn.clicked.connect(self._browse_dir)
         dir_row.addWidget(self._image_dir, 1)
         dir_row.addWidget(browse_btn)
-        root.addLayout(dir_row)
+        photo_layout.addLayout(dir_row)
+        photo_hint = QLabel("桌面相框会从这个目录轮播照片，之后可在设置中管理多个相册。", self)
+        photo_hint.setWordWrap(True)
+        photo_hint.setStyleSheet("color:#7b8794;font-size:12px;")
+        photo_layout.addWidget(photo_hint)
+        root.addWidget(photo_group)
 
         # 步骤3：局域网同步（可选）
-        step_three = QLabel("03  局域网同步", self)
-        step_three.setStyleSheet("font-size:15px; font-weight:700; color:#263238;")
-        root.addWidget(step_three)
+        sync_group = QGroupBox("03  设备连接（可选）", self)
+        sync_layout = QVBoxLayout(sync_group)
+        sync_layout.setContentsMargins(12, 14, 12, 12)
         self._sync_check = QCheckBox("启用局域网同步（两台电脑互相寄信）", self)
         self._sync_check.toggled.connect(self._on_sync_toggled)
-        root.addWidget(self._sync_check)
+        sync_layout.addWidget(self._sync_check)
         
         peer_row = QHBoxLayout()
         self._peer_host = QLineEdit(self)
@@ -83,11 +89,12 @@ class OnboardingWindow(QMainWindow):
         )
         peer_row.addWidget(QLabel("对方IP:", self))
         peer_row.addWidget(self._peer_host, 1)
-        root.addLayout(peer_row)
+        sync_layout.addLayout(peer_row)
         self._sync_hint = QLabel(self)
         self._sync_hint.setWordWrap(True)
         self._sync_hint.setStyleSheet("color:#7b8794;font-size:12px;")
-        root.addWidget(self._sync_hint)
+        sync_layout.addWidget(self._sync_hint)
+        root.addWidget(sync_group)
         self._on_sync_toggled(False)
 
         root.addStretch(1)
