@@ -137,6 +137,10 @@ class ReadLetterWindow(QMainWindow):
                         img_lbl = QLabel(self)
                         img_lbl.setPixmap(pm)
                         img_lbl.setAlignment(Qt.AlignCenter)
+                        img_lbl.setStyleSheet(
+                            "QLabel{background:#ffffff;border:1px solid #dfe5ec;"
+                            "border-radius:8px;padding:6px;}"
+                        )
                         layout.addWidget(img_lbl)
                     except Exception:
                         log_exception("附件渲染失败")
