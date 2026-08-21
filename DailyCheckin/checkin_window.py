@@ -393,6 +393,11 @@ class CheckinWindow(QMainWindow):
     def _update_streak(self) -> None:
         streak = store.get_streak()
         self._streak_label.setText(f"连续打卡 {streak} 天")
+        has_today = store.get_by_date(date.today().isoformat()) is not None
+        self._today_btn.setText("编辑今日打卡" if has_today else "今日打卡")
+        self._today_btn.setToolTip(
+            "修改今天的心情记录" if has_today else "记录今天的心情"
+        )
 
     def _refresh_chart(self) -> None:
         records = store.get_recent(30)
