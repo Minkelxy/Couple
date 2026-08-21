@@ -4,6 +4,8 @@ from __future__ import annotations
 from PySide6.QtGui import QColor, QFont, QFontDatabase, QPalette
 from PySide6.QtWidgets import QApplication
 
+import font_utils
+
 
 def _install_font(app: QApplication) -> None:
     """Choose a CJK-capable UI font when the platform provides one."""
@@ -22,6 +24,16 @@ def _install_font(app: QApplication) -> None:
         if family in available:
             app.setFont(QFont(family, 10))
             return
+    # Some Linux installations have a usable CJK file but do not register its
+    # family with Qt until the application loads it explicitly.
+    font_path = font_utils.get_cjk_font_path()
+    if font_path:
+        font_id = QFontDatabase.addApplicationFont(font_path)
+        if font_id >= 0:
+            families = QFontDatabase.applicationFontFamilies(font_id)
+            if families:
+                app.setFont(QFont(families[0], 10))
+                return
     app.setFont(QFont("Sans Serif", 10))
 
 
