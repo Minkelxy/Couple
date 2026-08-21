@@ -177,7 +177,7 @@ class _MovieItemWidget(QWidget):
             if isinstance(m, int):
                 parts.append(f"我:{m}")
             if isinstance(p, int):
-                parts.append(f"TA:{p}")
+                parts.append(f"对方:{p}")
             text = "  ".join(parts)
             if isinstance(m, int) and isinstance(p, int) and abs(m - p) >= 2:
                 text = "分差较大  " + text
@@ -186,12 +186,12 @@ class _MovieItemWidget(QWidget):
         if isinstance(m, int):
             bits.append(f"我:{m}")
         if isinstance(p, int):
-            bits.append(f"TA:{p}")
+            bits.append(f"对方:{p}")
         return "  ".join(bits)
 
     @staticmethod
     def _partner_badge_text(ps) -> str:
-        """对方状态徽章文本，如 'TA: 想看 / 8' / 'TA: 已看'。"""
+        """对方状态徽章文本，如 '对方: 想看 / 8' / '对方: 已看'。"""
         if not ps:
             return ""
         status = ps.get("status")
@@ -199,12 +199,12 @@ class _MovieItemWidget(QWidget):
         name_map = {"want": "想看", "watching": "在看", "watched": "已看"}
         name = name_map.get(status) if status else ""
         if isinstance(rating, int):
-            return f"TA: {name} / {rating}" if name else f"TA: / {rating}"
-        return f"TA: {name}" if name else ""
+            return f"对方: {name} / {rating}" if name else f"对方: / {rating}"
+        return f"对方: {name}" if name else ""
 
 
 class _RatingDialog(QDialog):
-    """评分短评对话框：我 / TA 两个标签页，各含 1-10 滑块 + 短评框。"""
+    """评分短评对话框：我 / 对方两个标签页，各含 1-10 滑块 + 短评框。"""
 
     def __init__(self, movie: dict, parent=None) -> None:
         super().__init__(parent)
@@ -228,7 +228,7 @@ class _RatingDialog(QDialog):
         self._partner = self._make_tab(movie.get("rating_partner"),
                                         movie.get("review_partner") or "")
         tabs.addTab(self._mine["page"], "我")
-        tabs.addTab(self._partner["page"], "TA")
+        tabs.addTab(self._partner["page"], "对方")
         v.addWidget(tabs, 1)
 
         btns = QHBoxLayout()
