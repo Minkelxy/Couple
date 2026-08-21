@@ -163,8 +163,10 @@ class ComposeWindow(QMainWindow):
         self._dt.setCalendarPopup(True)
         self._dt.setDisplayFormat("yyyy-MM-dd HH:mm")
         self._dt.setVisible(False)
+        self._custom_time_label = QLabel("自定义时间:", self)
+        self._custom_time_label.setVisible(False)
         time_form.addRow("送达时间:", self._preset)
-        time_form.addRow("", self._dt)
+        time_form.addRow(self._custom_time_label, self._dt)
         root.addLayout(time_form)
 
         # 寄出按钮
@@ -220,7 +222,9 @@ class ComposeWindow(QMainWindow):
     # ---------- 送达时间 ----------
 
     def _on_preset_changed(self, idx: int) -> None:
-        self._dt.setVisible(idx == 5)  # 自定义
+        custom = idx == 5
+        self._dt.setVisible(custom)
+        self._custom_time_label.setVisible(custom)
 
     def _resolve_deliver_at(self) -> datetime | None:
         idx = self._preset.currentIndex()
