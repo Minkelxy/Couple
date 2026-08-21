@@ -158,6 +158,12 @@ class CalendarWidget(QWidget):
                     date_str = cell_date.isoformat()
                     mood = mood_by_date.get(date_str)
                     has_partner = date_str in partner_by_date
+                    tooltip_lines = [date_str]
+                    if mood:
+                        tooltip_lines.append("我的打卡")
+                    if has_partner:
+                        tooltip_lines.append("对方的打卡")
+                    cell.setToolTip("\n".join(tooltip_lines))
                     emoji = store.MOOD_MAP.get(mood, "") if mood else ""
                     line2 = emoji
                     if has_partner:
@@ -173,6 +179,7 @@ class CalendarWidget(QWidget):
                     cell.setProperty("date", date_str)
                 else:
                     cell.setText("")
+                    cell.setToolTip("")
                     cell.setStyleSheet(
                         "QPushButton{border:none; background:transparent;}"
                     )
