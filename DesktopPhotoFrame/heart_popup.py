@@ -12,6 +12,7 @@ from PySide6.QtCore import (
     QEasingCurve,
     QPropertyAnimation,
     QRect,
+    QRectF,
     Qt,
     QTimer,
 )
@@ -103,6 +104,19 @@ class HeartPopup(QWidget):
         p.setPen(pen)
         p.setBrush(QColor(236, 90, 122, 235))
         p.drawPath(path)
+
+        caption_font = QApplication.font()
+        caption_font.setPointSize(18)
+        caption_font.setBold(True)
+        p.setFont(caption_font)
+        p.setPen(QColor(255, 240, 245, 230))
+        caption_rect = QRectF(
+            cx - size,
+            bottom_y + 22,
+            size * 2,
+            34,
+        )
+        p.drawText(caption_rect, Qt.AlignCenter, "想你了")
 
     # ---------- 显示 ----------
 
