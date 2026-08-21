@@ -36,7 +36,7 @@ class ComposeWindow(QMainWindow):
 
     def __init__(self, sync_hub=None) -> None:
         super().__init__()
-        self.setWindowTitle("写一封信 ✉")
+        self.setWindowTitle("写一封信")
         self.resize(600, 680)
         self.setMinimumSize(540, 600)
         self._attachment_bytes: bytes | None = None
@@ -124,7 +124,8 @@ class ComposeWindow(QMainWindow):
 
         # 附件
         att_row = QHBoxLayout()
-        self._att_btn = QPushButton("📎 添加图片", self)
+        self._att_btn = QPushButton("添加图片", self)
+        self._att_btn.setToolTip("为信件添加一张图片附件")
         self._att_btn.clicked.connect(self._pick_attachment)
         self._att_label = QLabel("未选择附件", self)
         self._att_label.setStyleSheet("color:#7b8794; font-size:13px;")
@@ -157,7 +158,7 @@ class ComposeWindow(QMainWindow):
         root.addLayout(time_form)
 
         # 寄出按钮
-        self._send_btn = QPushButton("💌 寄出", self)
+        self._send_btn = QPushButton("寄出", self)
         self._send_btn.setStyleSheet(
             "QPushButton{background:#e85d75;color:#fff;border:none;"
             "border-radius:6px;padding:12px;font-size:15px;font-weight:600;}"
@@ -273,7 +274,7 @@ class ComposeWindow(QMainWindow):
 
         when = deliver_at.strftime("%Y-%m-%d %H:%M") if deliver_at > datetime.now() else "现在"
         # 寄出成功后用 toast 反馈，不弹模态对话框打断用户
-        tip = f"信件将在 {when} 送达" if when != "现在" else "信件已寄出 ✉"
+        tip = f"信件将在 {when} 送达" if when != "现在" else "信件已寄出"
         self.toast.emit(tip)
         self.statusBar().showMessage(tip, 5000)
 
