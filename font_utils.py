@@ -76,6 +76,11 @@ def load_font(size: int) -> tuple[ImageFont.FreeTypeFont | ImageFont.ImageFont, 
     return ImageFont.load_default(), False
 
 
+def get_cjk_font_path() -> str | None:
+    """Return the discovered CJK font path for libraries needing a file path."""
+    return _resolve_font_path()
+
+
 def clear_cache() -> None:
     """清空字体缓存（一般在测试或字体目录变更时调用）。"""
     _resolve_font_path.cache_clear()

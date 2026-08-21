@@ -133,7 +133,7 @@ class CheckinEditor(QDialog):
         layout.setContentsMargins(24, 20, 24, 20)
         layout.setSpacing(14)
 
-        title = QLabel(f"📅 {self._date}", self)
+        title = QLabel(self._date, self)
         title.setStyleSheet("font-size:20px; font-weight:700; color:#263238;")
         layout.addWidget(title)
 
@@ -179,7 +179,7 @@ class CheckinEditor(QDialog):
 
         # 图片选择
         img_row = QHBoxLayout()
-        self._img_btn = QPushButton("📷 选择图片", self)
+        self._img_btn = QPushButton("选择图片", self)
         self._img_btn.setStyleSheet(
             "QPushButton{background:#ffffff; color:#d84f68;"
             "border:1px solid #e8a0ad; border-radius:6px; padding:8px 16px;"
@@ -196,7 +196,7 @@ class CheckinEditor(QDialog):
         layout.addStretch(1)
 
         # 保存按钮
-        self._save_btn = QPushButton("保存 💾", self)
+        self._save_btn = QPushButton("保存", self)
         self._save_btn.setStyleSheet(
             "QPushButton{background:#e85d75; color:#fff; border:none;"
             "border-radius:6px; padding:10px; font-size:15px;font-weight:600;}"
@@ -263,7 +263,7 @@ class CheckinWindow(QMainWindow):
         self._hub = hub
         global _active_window
         _active_window = weakref.ref(self)
-        self.setWindowTitle("打卡日历 📅")
+        self.setWindowTitle("打卡日历")
         self.resize(1220, 720)
         self.setMinimumSize(1060, 640)
         self._build_ui()
@@ -315,7 +315,7 @@ class CheckinWindow(QMainWindow):
         )
         left.addWidget(self._streak_label)
 
-        self._today_btn = QPushButton("📝 今日打卡", self)
+        self._today_btn = QPushButton("今日打卡", self)
         self._today_btn.setStyleSheet(
             "QPushButton{background:#e85d75; color:#fff; border:none;"
             "border-radius:6px; padding:11px; font-size:15px;font-weight:600;}"
@@ -333,7 +333,7 @@ class CheckinWindow(QMainWindow):
         self._chart = MoodChart(self)
         right.addWidget(self._chart, 1)
 
-        self._refresh_btn = QPushButton("🔄 查看心情趋势", self)
+        self._refresh_btn = QPushButton("刷新心情趋势", self)
         self._refresh_btn.setStyleSheet(
             "QPushButton{background:#ffffff; color:#d84f68;"
             "border:1px solid #e8a0ad; border-radius:6px; padding:8px;"
@@ -347,7 +347,7 @@ class CheckinWindow(QMainWindow):
         # ---- 最右：对方的心情 ----
         partner_col = QVBoxLayout()
         partner_col.setSpacing(8)
-        partner_title = QLabel("对方的心情 💙", self)
+        partner_title = QLabel("对方近况", self)
         partner_title.setStyleSheet(
             "font-size:15px; font-weight:700; color:#52616d;"
         )
@@ -358,7 +358,11 @@ class CheckinWindow(QMainWindow):
             "QListWidget{border:1px solid #dfe5ec; border-radius:8px;"
             "background:#ffffff; font-size:13px;}"
             "QListWidget::item{padding:8px 6px; border-bottom:1px solid #edf1f5;}"
+            "QListWidget::item:hover{background:#f7f9fb;}"
+            "QListWidget::item:selected{background:#eef5f7;color:#263238;}"
         )
+        self._partner_list.setAlternatingRowColors(True)
+        self._partner_list.setSpacing(2)
         partner_col.addWidget(self._partner_list)
         body.addLayout(partner_col, 0)
 
@@ -366,7 +370,7 @@ class CheckinWindow(QMainWindow):
 
     def _update_streak(self) -> None:
         streak = store.get_streak()
-        self._streak_label.setText(f"🔥 连续打卡 {streak} 天")
+        self._streak_label.setText(f"连续打卡 {streak} 天")
 
     def _refresh_chart(self) -> None:
         records = store.get_recent(30)

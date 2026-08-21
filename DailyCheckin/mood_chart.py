@@ -7,15 +7,23 @@ from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.font_manager import FontProperties
 
+import font_utils
 from . import store
 
 PINK = "#e85d75"
 PARTNER_BLUE = "#4d7ea8"
-# Y 轴从下到上：1😴 2😡 3😢 4😍 5😊
-# matplotlib 在 Windows 默认 YaHei 缺 emoji 字形会刷警告，
-# 故 y 轴只用纯中文标签 + 颜色区分心情；emoji 保留在 Qt 控件里展示
-MOOD_LABELS = {1: "困倦", 2: "愤怒", 3: "伤心", 4: "喜爱", 5: "开心"}
+# Y 轴从下到上：1 困倦 / 2 愤怒 / 3 伤心 / 4 喜爱 / 5 开心。
+_CJK_FONT_PATH = font_utils.get_cjk_font_path()
+_MPL_FONT = (
+    FontProperties(fname=_CJK_FONT_PATH) if _CJK_FONT_PATH else None
+)
+MOOD_LABELS = (
+    {1: "困倦", 2: "愤怒", 3: "伤心", 4: "喜爱", 5: "开心"}
+    if _MPL_FONT is not None
+    else {1: "Tired", 2: "Angry", 3: "Sad", 4: "Warm", 5: "Happy"}
+)
 MOOD_COLORS = {1: "#7b8794", 2: "#d9785d", 3: "#5f97b8", 4: "#e85d75", 5: "#c58b36"}
 
 
@@ -45,9 +53,10 @@ class MoodChart(QWidget):
         ax.set_ylim(0.5, 5.5)
         ax.set_yticks([1, 2, 3, 4, 5])
         # 每个心情标签单独上色，emoji 缺字形警告已通过改纯中文标签消除
-        ax.set_yticklabels(
-            [MOOD_LABELS[i] for i in range(1, 6)], fontsize=10
-        )
+        tick_kwargs = {"fontsize": 10}
+        if _MPL_FONT is not None:
+            tick_kwargs["fontproperties"] = _MPL_FONT
+        ax.set_yticklabels([MOOD_LABELS[i] for i in range(1, 6)], **tick_kwargs)
         for mood_val, label in zip(range(1, 6), ax.get_yticklabels()):
             label.set_color(MOOD_COLORS[mood_val])
         ax.tick_params(axis="x", labelsize=8, colors="#7b8794")
@@ -69,7 +78,11 @@ class MoodChart(QWidget):
         mine = sorted(records, key=lambda r: r["date"]) if records else []
         partner = sorted(store.get_partner_recent(30), key=lambda r: r["date"])
         if not mine and not partner:
-            self._ax.set_title("暂无打卡记录", color="#7b8794", fontsize=12)
+            title = "暂无打卡记录" if _MPL_FONT is not None else "No check-ins yet"
+            title_kwargs = {"color": "#7b8794", "fontsize": 12}
+            if _MPL_FONT is not None:
+                title_kwargs["fontproperties"] = _MPL_FONT
+            self._ax.set_title(title, **title_kwargs)
             self._fig.tight_layout()
             self._canvas.draw()
             return
@@ -80,7 +93,7 @@ class MoodChart(QWidget):
             self._ax.plot(
                 dates, moods, color=PINK, marker="o", markersize=6,
                 linewidth=2, markerfacecolor=PINK, markeredgecolor="white",
-                label="我",
+                label="我" if _MPL_FONT is not None else "Me",
             )
         # 对方：蓝色方块
         if partner:
@@ -89,10 +102,19 @@ class MoodChart(QWidget):
             self._ax.plot(
                 p_dates, p_moods, color=PARTNER_BLUE, marker="s", markersize=6,
                 linewidth=2, markerfacecolor=PARTNER_BLUE, markeredgecolor="white",
-                label="对方",
+                label="对方" if _MPL_FONT is not None else "Partner",
             )
-        self._ax.set_title("最近心情趋势", color="#263238", fontsize=13, fontweight="bold")
-        self._ax.legend(loc="upper left", fontsize=10, frameon=False)
+        title_kwargs = {
+            "color": "#263238", "fontsize": 13, "fontweight": "bold"
+        }
+        if _MPL_FONT is not None:
+            title_kwargs["fontproperties"] = _MPL_FONT
+        self._ax.set_title("最近心情趋势" if _MPL_FONT is not None else "Recent mood trend",
+                           **title_kwargs)
+        legend_kwargs = {"loc": "upper left", "fontsize": 10, "frameon": False}
+        if _MPL_FONT is not None:
+            legend_kwargs["prop"] = _MPL_FONT
+        self._ax.legend(**legend_kwargs)
         self._fig.autofmt_xdate(rotation=30)
         self._fig.tight_layout()
         self._canvas.draw()
