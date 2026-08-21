@@ -82,7 +82,7 @@ class TrayController(QObject):
         self._act_prev.triggered.connect(self.prev_requested)
         menu.addAction(self._act_prev)
 
-        self._act_shuffle = QAction("随机一张  🎲", menu)
+        self._act_shuffle = QAction("随机一张", menu)
         self._act_shuffle.triggered.connect(self.shuffle_requested)
         menu.addAction(self._act_shuffle)
 
