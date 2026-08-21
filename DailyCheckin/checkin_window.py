@@ -235,7 +235,8 @@ class CheckinEditor(QDialog):
                 QMessageBox.warning(self, "错误", "无法读取该图片，请换一张。")
                 return
         self._image_path = filename
-        self._img_label.setText(str(dest))
+        self._img_label.setText(dest.name)
+        self._img_label.setToolTip(str(dest))
 
     def _load_existing(self) -> None:
         rec = store.get_by_date(self._date)
@@ -248,7 +249,9 @@ class CheckinEditor(QDialog):
         self._text_edit.setText(rec["text"] or "")
         if rec["image_path"]:
             self._image_path = rec["image_path"]
-            self._img_label.setText(_resolve_checkin_image(rec["image_path"]))
+            image_path = _resolve_checkin_image(rec["image_path"])
+            self._img_label.setText(Path(image_path).name)
+            self._img_label.setToolTip(image_path)
 
     def _save(self) -> None:
         if self._mood == 0:
