@@ -676,7 +676,7 @@ class GalleryGridWindow(QMainWindow):
             return
         # 先放占位项（无图标、显示文件名），保持位置与 images 索引对齐
         for src in images:
-            it = QListWidgetItem("📷 " + src.name)
+            it = QListWidgetItem(src.name)
             it.setData(Qt.UserRole, str(src))
             self._grid.addItem(it)
         # 启动后台 worker 逐张生成缩略图
@@ -698,7 +698,7 @@ class GalleryGridWindow(QMainWindow):
             return
         if pm is not None and not pm.isNull():
             item.setIcon(QIcon(pm))
-            # 去掉 "📷 " 前缀，只留文件名
+            # 缩略图加载完成后只保留文件名
             name = self._grid_images[index].name if index < len(self._grid_images) else item.text()
             item.setText(name)
 

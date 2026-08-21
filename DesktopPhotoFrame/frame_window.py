@@ -389,7 +389,7 @@ class FrameWindow(QWidget):
         exif = ip.read_exif_info(src)
         tip = f"{src.name}"
         if exif:
-            tip += f"\n📷 {exif}"
+            tip += f"\nEXIF：{exif}"
         self._label.setToolTip(tip)
         self._fade_switch(pixmap, kb)
 
@@ -594,7 +594,7 @@ class FrameWindow(QWidget):
             return
         src = str(self._images[self._index])
         is_fav = config.toggle_favorite(src)
-        self.status_message.emit("⭐ 已收藏" if is_fav else "已取消收藏")
+        self.status_message.emit("已收藏" if is_fav else "已取消收藏")
 
     def toggle_favorites_only(self) -> bool:
         """切换只看收藏模式，返回切换后状态。"""
