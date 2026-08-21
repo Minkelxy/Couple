@@ -616,10 +616,18 @@ class GalleryGridWindow(QMainWindow):
         self._grid_images = images
         self._grid_status.setText(f"{len(images)} 张照片" if images else "当前没有符合条件的照片")
         if not images:
-            item = QListWidgetItem("📭 把照片放到这个目录就会显示在这里\n" + path)
+            display_path = str(path)
+            if len(display_path) > 72:
+                display_path = "…" + display_path[-69:]
+            item = QListWidgetItem(
+                "此相册暂无照片\n"
+                f"{display_path}\n\n"
+                "请将图片放入该目录，或选择其他相册"
+            )
             item.setFlags(Qt.NoItemFlags)
             item.setTextAlignment(Qt.AlignCenter)
             item.setForeground(QColor("#7b8794"))
+            item.setSizeHint(QSize(360, 140))
             self._grid.addItem(item)
             return
         # 先放占位项（无图标、显示文件名），保持位置与 images 索引对齐
