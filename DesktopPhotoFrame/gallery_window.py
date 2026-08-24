@@ -91,6 +91,20 @@ def _fit_to_screen(img: Image.Image, max_w: int, max_h: int, zoom: float = 1.0) 
     return ip.pil_to_pixmap(img)
 
 
+def _make_thumbnail(img: Image.Image, size: int = 200) -> QPixmap:
+    """Create a fixed square thumbnail canvas without cropping the source."""
+    img = ImageOps.exif_transpose(img).convert("RGBA")
+    side = max(1, int(size))
+    w, h = img.size
+    scale = min(side / max(1, w), side / max(1, h))
+    nw, nh = max(1, int(w * scale)), max(1, int(h * scale))
+    if (nw, nh) != (w, h):
+        img = img.resize((nw, nh), Image.LANCZOS)
+    canvas = Image.new("RGBA", (side, side), (238, 242, 246, 255))
+    canvas.alpha_composite(img, ((side - nw) // 2, (side - nh) // 2))
+    return ip.pil_to_pixmap(canvas)
+
+
 class GalleryWindow(QMainWindow):
     """全屏画廊窗口。"""
 
@@ -406,8 +420,7 @@ class _ThumbWorker(QThread):
             try:
                 with Image.open(src) as src_img:
                     src_img.load()
-                    thumb = ip.fit_into(ImageOps.exif_transpose(src_img).copy(), 200, 200)
-                pm = ip.pil_to_pixmap(thumb)
+                    pm = _make_thumbnail(src_img.copy(), 200)
             except Exception:
                 log_exception("生成缩略图失败: %s", src)
                 pm = None
