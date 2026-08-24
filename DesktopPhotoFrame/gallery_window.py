@@ -76,21 +76,18 @@ def _stop_anim(anim: QPropertyAnimation | None) -> None:
 
 
 def _fit_to_screen(img: Image.Image, max_w: int, max_h: int, zoom: float = 1.0) -> QPixmap:
-    """cover 模式：填满屏幕并居中裁剪，无黑边。zoom>1 时进一步放大查看细节。
-
-    用 max(scale_w, scale_h) 保证两个维度都 ≥ 屏幕尺寸，再居中裁剪到屏幕大小。
-    小图也会被放大填满（原 contain 模式 min(..., 1.0) 导致小图周围大黑边）。
-    """
+    """contain 模式：完整显示整张照片，默认不裁剪；zoom>1 时放大查看细节。"""
     img = img.convert("RGBA")
     w, h = img.size
     tw, th = max(1, int(max_w)), max(1, int(max_h))
-    scale = max(tw / w, th / h) * zoom
+    scale = min(tw / w, th / h) * max(1.0, zoom)
     nw, nh = max(1, int(w * scale)), max(1, int(h * scale))
     img = img.resize((nw, nh), Image.LANCZOS)
-    # 居中裁剪到 tw × th
-    left = max(0, (nw - tw) // 2)
-    top = max(0, (nh - th) // 2)
-    img = img.crop((left, top, left + tw, top + th))
+    if nw <= tw and nh <= th:
+        canvas = Image.new("RGBA", (tw, th), (0, 0, 0, 255))
+        canvas.alpha_composite(img, ((tw - nw) // 2, (th - nh) // 2))
+        return ip.pil_to_pixmap(canvas)
+    # 放大查看时保留完整 pixmap，由 QLabel 的居中视口显示局部细节。
     return ip.pil_to_pixmap(img)
 
 
