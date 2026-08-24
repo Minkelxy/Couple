@@ -180,6 +180,7 @@ class ComposeWindow(QMainWindow):
             "QPushButton{background:#e85d75;color:#fff;border:none;"
             "border-radius:6px;padding:12px;font-size:15px;font-weight:600;}"
             "QPushButton:hover{background:#d94f68;}"
+            "QPushButton:disabled{background:#d9dee4;color:#fff;}"
         )
         self._send_btn.setToolTip("寄出信件（Ctrl+Enter）")
         self._send_btn.clicked.connect(self._on_send)
