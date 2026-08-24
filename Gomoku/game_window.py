@@ -33,14 +33,14 @@ import uuid
 import weakref
 from datetime import datetime
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QSize, Qt, QTimer
 from PySide6.QtWidgets import (
     QDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
     QMainWindow, QMessageBox, QPushButton, QVBoxLayout, QWidget,
 )
 
 from . import store
-from .board_widget import SIZE as BOARD_SIZE, GomokuBoard
+from .board_widget import SIZE as BOARD_SIZE, WIDGET as BOARD_WIDGET_SIZE, GomokuBoard
 from common_utils import log_info, log_warning
 
 # 模块级引用：当前 GameWindow 实例 + hub 引用（供懒创建使用）
@@ -279,14 +279,31 @@ class GameWindow(QMainWindow):
         self._board = GomokuBoard(self)
         self._board.stone_placed.connect(self._on_stone_placed)
         self._board.game_over.connect(self._on_game_over)
-        wrap = QHBoxLayout()
+        board_host = QWidget(central)
+        board_host.setObjectName("boardHost")
+        wrap = QHBoxLayout(board_host)
+        wrap.setContentsMargins(0, 0, 0, 0)
         wrap.addStretch(1)
         wrap.addWidget(self._board)
         wrap.addStretch(1)
-        root.addLayout(wrap, 1)
+        self._board_host = board_host
+        root.addWidget(board_host, 1)
 
         self.setCentralWidget(central)
         self.statusBar().showMessage("点击「邀请对方」开始联机；未邀请前可本地体验")
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        QTimer.singleShot(0, self._fit_board_to_host)
+
+    def _fit_board_to_host(self) -> None:
+        if not hasattr(self, "_board_host"):
+            return
+        side = min(
+            BOARD_WIDGET_SIZE, self._board_host.width(), self._board_host.height()
+        )
+        if side > 0 and self._board.size() != QSize(side, side):
+            self._board.setFixedSize(side, side)
 
     # ---------- 状态栏与锁定 ----------
 

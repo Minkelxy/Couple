@@ -5,9 +5,9 @@
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QSizePolicy, QWidget
 
 SIZE = 15                                    # 15 条线
 CELL = 40                                    # 每格像素
@@ -26,7 +26,8 @@ class GomokuBoard(QWidget):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setFixedSize(WIDGET, WIDGET)
+        self.setMinimumSize(420, 420)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._grid: list[list[int]] = [[0] * SIZE for _ in range(SIZE)]
         self._moves: list[tuple[int, int, int]] = []
         self._current = 1   # 黑先
@@ -35,14 +36,29 @@ class GomokuBoard(QWidget):
 
     # ---------- 绘制 ----------
 
+    def sizeHint(self) -> QSize:
+        return QSize(WIDGET, WIDGET)
+
+    def hasHeightForWidth(self) -> bool:
+        return True
+
+    def heightForWidth(self, width: int) -> int:
+        return width
+
     def paintEvent(self, event) -> None:
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing, True)
+        side = min(self.width(), self.height())
+        offset_x = (self.width() - side) / 2
+        offset_y = (self.height() - side) / 2
+        scale = side / WIDGET
+        p.translate(offset_x, offset_y)
+        p.scale(scale, scale)
         # 木质背景
-        p.fillRect(self.rect(), QColor("#dfb77f"))
+        p.fillRect(0, 0, WIDGET, WIDGET, QColor("#dfb77f"))
         p.setPen(QPen(QColor("#b8844e"), 2))
         p.setBrush(Qt.NoBrush)
-        p.drawRect(1, 1, self.width() - 3, self.height() - 3)
+        p.drawRect(1, 1, WIDGET - 3, WIDGET - 3)
         # 网格线
         p.setPen(QPen(QColor(60, 40, 20), 1))
         for i in range(SIZE):
@@ -89,8 +105,16 @@ class GomokuBoard(QWidget):
         if self._locked:
             return
         pos = event.position()
-        col = round((pos.x() - MARGIN) / CELL)
-        row = round((pos.y() - MARGIN) / CELL)
+        side = min(self.width(), self.height())
+        scale = side / WIDGET
+        if scale <= 0:
+            return
+        offset_x = (self.width() - side) / 2
+        offset_y = (self.height() - side) / 2
+        logical_x = (pos.x() - offset_x) / scale
+        logical_y = (pos.y() - offset_y) / scale
+        col = round((logical_x - MARGIN) / CELL)
+        row = round((logical_y - MARGIN) / CELL)
         if not (0 <= row < SIZE and 0 <= col < SIZE):
             return
         if self._grid[row][col] != 0:
