@@ -708,6 +708,9 @@ class GalleryGridWindow(QMainWindow):
         for src in images:
             it = QListWidgetItem(src.name)
             it.setData(Qt.UserRole, str(src))
+            # 显式给 IconMode 项目分配图标 + 文件名的垂直空间；部分 Qt
+            # 样式会忽略 gridSize，否则项目高度会退化为单行文本高度。
+            it.setSizeHint(QSize(200, 230))
             self._grid.addItem(it)
         # 启动后台 worker 逐张生成缩略图
         worker = _ThumbWorker(images)
