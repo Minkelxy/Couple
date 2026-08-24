@@ -97,7 +97,11 @@ class SettingsWindow(QMainWindow):
 
         tabs = QTabWidget(self)
         tabs.setDocumentMode(True)
-        tabs.setUsesScrollButtons(True)
+        tabs.setUsesScrollButtons(False)
+        tabs.tabBar().setExpanding(True)
+        tabs.tabBar().setStyleSheet(
+            "QTabBar::tab{min-width:70px;padding:5px 7px;font-size:12px;}"
+        )
         tab_pages = (
             ("相框", self._build_photo_frame_tab(), "轮播、相册与显示效果"),
             ("信箱", self._build_mailbox_tab(), "昵称与信件投递"),
