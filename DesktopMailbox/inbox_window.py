@@ -112,11 +112,14 @@ class InboxWindow(QMainWindow):
             "QPushButton{background:#e85d75;color:#fff;border:none;"
             "border-radius:6px;padding:9px 16px;font-weight:600;}"
             "QPushButton:hover{background:#d94f68;}"
+            "QPushButton:disabled{background:#d9dee4;color:#fff;}"
         )
         self._del_btn.setStyleSheet(
             "QPushButton{padding:9px 16px;color:#b04a5a;"
             "border-color:#efcaca;background:#fff8f8;}"
             "QPushButton:hover{background:#fdeaea;}"
+            "QPushButton:disabled{background:#edf0f3;color:#aab3bd;"
+            "border-color:#e1e5ea;}"
         )
         bottom.addStretch(1)
         bottom.addWidget(self._open_btn)
@@ -186,7 +189,8 @@ class InboxWindow(QMainWindow):
             detail = "暂无安排中的信件"
         self._preview.setHtml(
             "<div style='text-align:center;padding:72px 28px;'>"
-            "<div style='font-size:30px;color:#e85d75;margin-bottom:12px;'>♡</div>"
+            "<div style='font-size:26px;font-weight:700;color:#e85d75;"
+            "margin-bottom:12px;'>信</div>"
             f"<div style='font-size:17px;font-weight:600;color:#52616d;'>{title}</div>"
             f"<div style='font-size:13px;color:#9aa5b1;margin-top:8px;'>{detail}</div>"
             "</div>"
