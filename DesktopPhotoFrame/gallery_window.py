@@ -708,6 +708,8 @@ class GalleryGridWindow(QMainWindow):
         for src in images:
             it = QListWidgetItem(src.name)
             it.setData(Qt.UserRole, str(src))
+            it.setTextAlignment(Qt.AlignmentFlag.AlignHCenter)
+            it.setToolTip(f"{src.name}\n双击查看大图，右键管理收藏或共享")
             # 显式给 IconMode 项目分配图标 + 文件名的垂直空间；部分 Qt
             # 样式会忽略 gridSize，否则项目高度会退化为单行文本高度。
             it.setSizeHint(QSize(200, 230))
