@@ -60,6 +60,8 @@ class OnboardingWindow(QMainWindow):
         photo_layout.setContentsMargins(12, 14, 12, 12)
         dir_row = QHBoxLayout()
         self._image_dir = QLineEdit(str(app_paths.IMAGES_DIR), self)
+        self._image_dir.setCursorPosition(0)
+        self._image_dir.setToolTip(str(app_paths.IMAGES_DIR))
         browse_btn = QPushButton("浏览…", self)
         browse_btn.setToolTip("选择桌面相框使用的照片目录")
         browse_btn.clicked.connect(self._browse_dir)
